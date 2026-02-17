@@ -11,10 +11,3 @@ type User struct {
 	Password  string    `json:"pass" validate:"required,min=8,max=72"`
 	CreatedAt time.Time `json:"created_at" validate:"required"`
 }
-
-// DTO
-type RegisterRequest struct {
-}
-
-type LoginRequest struct {
-}

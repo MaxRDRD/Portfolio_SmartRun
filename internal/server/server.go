@@ -1,24 +1,28 @@
 package server
 
 import (
-	"errors"
+	"SmartRun/internal/user"
 	"net/http"
+	"time"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 )
 
-func StartHTTPServer() error {
+func NewServer(userHandler *user.Handler) http.Handler {
+	r := chi.NewRouter()
 
-	/*
-		http.HandleFunc("/user", UserProfile)
-		http.HandleFunc("/user/auth", UserAuth)
-		http.HandleFunc("/user/authn ", UserAutentification)
-		http.HandleFunc("/ ", MainPage)
-		http.HandleFunc("/workout ", WorkoutPage)
-	*/
+	r.Use(middleware.RequestID)
+	r.Use(middleware.RealIP)
+	r.Use(middleware.Logger)
+	r.Use(middleware.Recoverer)
+	r.Use(middleware.Timeout(60 * time.Second))
 
-	err := http.ListenAndServe(":5050", nil)
-	if errors.Is(err, http.ErrServerClosed) {
-		return nil
-	}
+	r.Route("/api", func(r chi.Router) {
+		r.Post("/register", userHandler.Register)
+		r.Post("/login", userHandler.Login)
+		r.Get("/me", userHandler.Me)
+	})
 
-	return err
+	return r
 }
