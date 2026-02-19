@@ -2,19 +2,22 @@ package db
 
 import (
 	"context"
-	"errors"
-	"os"
+	"fmt"
 
-	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 //postgres://username:password@localhost:5432/database_name?sslmode=disable
 
-func CreateConnection(ctx context.Context) (*pgx.Conn, error) {
-	connString := os.Getenv("CONN_STRING")
-	if connString == "" {
-		return nil, errors.New("CONN_STRING environment variable is not set")
+func NewPool(ctx context.Context, url string) (*pgxpool.Pool, error) {
+	pool, err := pgxpool.New(ctx, url)
+	if err != nil {
+		return nil, fmt.Errorf("create pool: %w", err)
 	}
-	return pgx.Connect(ctx, connString)
 
+	if err := pool.Ping(ctx); err != nil {
+		return nil, fmt.Errorf("ping db: %w", err)
+	}
+
+	return pool, nil
 }

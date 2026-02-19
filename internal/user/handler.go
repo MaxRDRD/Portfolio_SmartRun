@@ -1,9 +1,14 @@
 package user
 
 import (
+	"SmartRun/internal/auth"
 	"encoding/json"
 	"net/http"
 )
+
+type contextKey string
+
+const userIDKey contextKey = "userID"
 
 type Handler struct {
 	service Service
@@ -32,7 +37,12 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	json.NewEncoder(w).Encode(user)
+	json.NewEncoder(w).Encode(UserResponse{
+		ID:    user.ID,
+		Email: user.Email,
+		Name:  user.Name,
+	})
+
 }
 
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
@@ -56,4 +66,25 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	json.NewEncoder(w).Encode(AuthResponse{Token: token})
+}
+
+func (h *Handler) Me(w http.ResponseWriter, r *http.Request) {
+
+	userID, ok := auth.GetUserID(r.Context())
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	user, err := h.service.GetByID(r.Context(), userID)
+	if err != nil {
+		http.Error(w, "user not found", http.StatusNotFound)
+		return
+	}
+
+	json.NewEncoder(w).Encode(UserResponse{
+		ID:    user.ID,
+		Email: user.Email,
+		Name:  user.Name,
+	})
 }

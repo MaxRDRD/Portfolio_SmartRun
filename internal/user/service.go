@@ -4,17 +4,19 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
 	"os"
 	"time"
 
 	"github.com/go-playground/validator"
-	"github.com/golang-jwt/jwt"
+	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 )
 
 type Service interface {
 	Register(ctx context.Context, name, email, password string) (*User, error)
 	Login(ctx context.Context, email, password string) (string, error)
+	GetByID(ctx context.Context, id int) (*User, error)
 }
 
 type service struct {
@@ -59,9 +61,14 @@ func checkPasswordHash(password, hash string) bool {
 
 func (s *service) Register(ctx context.Context, name, email, password string) (*User, error) {
 	// 1. Проверяем, существует ли email
-	existing, _ := s.repo.GetByEmail(ctx, email)
-	if existing != nil {
-		return nil, errors.New("user already exists")
+	_, err := s.repo.GetByEmail(ctx, email)
+
+	if err == nil {
+		return nil, ErrUserAlreadyExists
+	}
+
+	if !errors.Is(err, ErrUserNotFound) {
+		return nil, err
 	}
 
 	// 2. Хешируем пароль
@@ -74,6 +81,10 @@ func (s *service) Register(ctx context.Context, name, email, password string) (*
 		Name:     name,
 		Email:    email,
 		Password: string(hash),
+	}
+
+	if err := user.ValidateUser(); err != nil {
+		return nil, err
 	}
 	// 3. Сохраняем
 	err = s.repo.Create(ctx, user)
@@ -100,7 +111,7 @@ func GenerateToken(userID int) (string, error) {
 		return "", errors.New("SECRET_KEY environment variable is not set")
 	}
 	// Подписываем токен
-	tokenString, err := token.SignedString(secret)
+	tokenString, err := token.SignedString([]byte(secret))
 	if err != nil {
 		return "", err
 	}
@@ -129,4 +140,13 @@ func (s *service) Login(ctx context.Context, email, password string) (string, er
 	}
 
 	return token, nil
+}
+
+func (s *service) GetByID(ctx context.Context, id int) (*User, error) {
+	user, err := s.repo.GetByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	return user, nil
 }

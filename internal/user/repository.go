@@ -2,8 +2,9 @@ package user
 
 import (
 	"context"
-	"fmt"
+	"errors"
 
+	"github.com/jackc/pgx"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -44,7 +45,9 @@ func (r *repository) Create(ctx context.Context, user *User) error {
 
 func (r *repository) GetByEmail(ctx context.Context, email string) (*User, error) {
 	query := `
-	SELECT * FROM users WHERE email = $1;
+	SELECT id, name, email, password, created_at
+	FROM users
+	WHERE email = $1;
 	`
 
 	var user User
@@ -56,9 +59,8 @@ func (r *repository) GetByEmail(ctx context.Context, email string) (*User, error
 		&user.CreatedAt,
 	)
 
-	if err != nil {
-		return nil, fmt.Errorf("error getting user: %w", err)
-
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrUserNotFound
 	}
 
 	return &user, err
@@ -66,7 +68,7 @@ func (r *repository) GetByEmail(ctx context.Context, email string) (*User, error
 
 func (r *repository) GetByID(ctx context.Context, id int) (*User, error) {
 	query := `
-	SELECT * FROM users WHERE id = $1;
+	SELECT id, name, email, password, created_at FROM users WHERE id = $1;
 	`
 
 	var user User
@@ -78,9 +80,8 @@ func (r *repository) GetByID(ctx context.Context, id int) (*User, error) {
 		&user.CreatedAt,
 	)
 
-	if err != nil {
-		return nil, fmt.Errorf("error getting user: %w", err)
-
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrUserNotFound
 	}
 
 	return &user, err
