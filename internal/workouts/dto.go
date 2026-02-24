@@ -1,5 +1,7 @@
 package workouts
 
+import "time"
+
 /*
 type Workouts struct {
 	ID           int
@@ -33,4 +35,13 @@ type UpdateRequest struct {
 	Distance     float64 `json:"distance"`
 	Duration     int     `json:"duration"`
 	TypeActivity string  `json:"type_activity"`
+}
+
+type WorkoutFilter struct {
+	UserID int        `json:"user_id"`
+	Type   string     `json:"type"`
+	From   *time.Time `json:"from"`
+	To     *time.Time `json:"to"`
+	Limit  int        `json:"limit"`
+	Offset int        `json:"offset"`
 }

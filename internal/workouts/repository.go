@@ -12,7 +12,7 @@ import (
 type Repository interface {
 	Create(ctx context.Context, workour *Workouts) error
 	GetByID(ctx context.Context, id int, userID int) (*Workouts, error)
-	GetAllByUserID(ctx context.Context, userID int) ([]Workouts, error)
+	GetAllByUserID(ctx context.Context, filter WorkoutFilter) ([]Workouts, error)
 	DeleteWorkout(ctx context.Context, id int, userID int) error
 	Update(ctx context.Context, workout *Workouts) error
 }
@@ -64,15 +64,39 @@ func (r *repository) GetByID(ctx context.Context, id int, userID int) (*Workouts
 	return &workout, err
 }
 
-func (r *repository) GetAllByUserID(ctx context.Context, userID int) ([]Workouts, error) {
-	sqlQuery := `
-        SELECT id, date, distance, duration, created_at, type_activity, pace
-        FROM workouts
-        WHERE user_id = $1
-        ORDER BY date DESC;
-    `
+func (r *repository) GetAllByUserID(ctx context.Context, filter WorkoutFilter) ([]Workouts, error) {
+	query := `
+		SELECT id, date, distance, duration, created_at, type_activity, pace
+		FROM workouts
+		WHERE user_id = $1
+	`
 
-	rows, err := r.db.Query(ctx, sqlQuery, userID)
+	args := []interface{}{filter.UserID}
+	argPos := 2
+
+	if filter.Type != "" {
+		query += fmt.Sprintf(" AND type_activity = $%d", argPos)
+		args = append(args, filter.Type)
+		argPos++
+	}
+
+	if filter.From != nil {
+		query += fmt.Sprintf(" AND date >= $%d", argPos)
+		args = append(args, *filter.From)
+		argPos++
+	}
+
+	if filter.To != nil {
+		query += fmt.Sprintf(" AND date <= $%d", argPos)
+		args = append(args, *filter.To)
+		argPos++
+	}
+
+	query += fmt.Sprintf(" ORDER BY date DESC LIMIT $%d OFFSET $%d", argPos, argPos+1)
+
+	args = append(args, filter.Limit, filter.Offset)
+
+	rows, err := r.db.Query(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("query all workouts: %w", err)
 	}

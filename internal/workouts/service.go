@@ -11,9 +11,10 @@ import (
 type Service interface {
 	Create(ctx context.Context, userID int, req CreateRequest) (*Workouts, error)
 	GetByID(ctx context.Context, id int, userID int) (*Workouts, error)
-	GetAllByID(ctx context.Context, userID int) ([]Workouts, error)
+	GetAllByID(ctx context.Context, filter WorkoutFilter) ([]Workouts, error)
 	Delete(ctx context.Context, id, userID int) error
 	Update(ctx context.Context, userID, id int, req UpdateRequest) (*Workouts, error)
+	GetAll(ctx context.Context, filter WorkoutFilter) ([]Workouts, error)
 }
 
 type service struct {
@@ -76,8 +77,8 @@ func (s *service) GetByID(ctx context.Context, id int, userID int) (*Workouts, e
 	return workout, nil
 }
 
-func (s *service) GetAllByID(ctx context.Context, userID int) ([]Workouts, error) {
-	workouts, err := s.repo.GetAllByUserID(ctx, userID)
+func (s *service) GetAllByID(ctx context.Context, filter WorkoutFilter) ([]Workouts, error) {
+	workouts, err := s.repo.GetAllByUserID(ctx, filter)
 	if err == ErrWorkoutNotFound {
 		return nil, err
 	}
@@ -121,4 +122,8 @@ func (s *service) Update(ctx context.Context, userID, id int, req UpdateRequest)
 	}
 
 	return workout, nil
+}
+
+func (s *service) GetAll(ctx context.Context, filter WorkoutFilter) ([]Workouts, error) {
+	return s.repo.GetAllByUserID(ctx, filter)
 }
