@@ -4,6 +4,8 @@ CREATE TABLE IF NOT EXISTS workouts(
     distance DECIMAL(7,2) NOT NULL,
     duration INTEGER NOT NULL,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    date TIMESTAMP NOT NULL DEFAULT NOW(),
+    type_activity VARCHAR(100) NOT NULL,
 
     CONSTRAINT fk_workouts_users
         FOREIGN KEY (user_id)

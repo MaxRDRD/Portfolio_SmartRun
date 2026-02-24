@@ -3,6 +3,7 @@ package user
 import (
 	"SmartRun/internal/auth"
 	"encoding/json"
+	"errors"
 	"net/http"
 )
 
@@ -26,23 +27,24 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := h.service.Register(
-		r.Context(),
-		req.Name,
-		req.Email,
-		req.Password,
-	)
+	user, err := h.service.Register(r.Context(), req)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		if errors.Is(err, ErrUserAlreadyExists) {
+			http.Error(w, err.Error(), http.StatusConflict)
+			return
+		}
+
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	w.WriteHeader(http.StatusCreated)
 
 	json.NewEncoder(w).Encode(UserResponse{
 		ID:    user.ID,
 		Email: user.Email,
 		Name:  user.Name,
 	})
-
 }
 
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
@@ -56,8 +58,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 
 	token, err := h.service.Login(
 		r.Context(),
-		req.Email,
-		req.Password,
+		req,
 	)
 
 	if err != nil {

@@ -11,8 +11,12 @@ id SERIAL PRIMARY KEY,
 	created_at TIMESTAMP NOT NULL DEFAULT NOW(),
 */
 type Workouts struct {
-	ID        int       `json:"id" validate:"required,min=2,max=50"`
-	Distance  float32   `json:"distance" validate:"required"`
-	Duration  int       `json:"duration" validate:"required"`
-	CreatedAt time.Time `json:"created_at" validate:"required"`
+	ID           int
+	UserID       int
+	Date         time.Time
+	Distance     float64
+	Duration     int
+	Pace         float64
+	CreatedAt    time.Time
+	TypeActivity string
 }

@@ -41,6 +41,11 @@ func NewServer(userHandler *user.Handler) http.Handler {
 			r.Use(auth.JWT)
 			r.Get("/me", userHandler.Me)
 		})
+
+		r.Post("/workouts", nil)
+		r.Get("/workouts", nil)
+		r.Get("/workouts/{id}", nil)
+		r.Delete("/workouts/{id}", nil)
 	})
 	return r
 }
