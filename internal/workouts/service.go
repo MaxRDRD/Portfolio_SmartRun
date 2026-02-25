@@ -25,13 +25,13 @@ type service struct {
 func NewService(repo Repository) Service {
 	validate := validator.New()
 
-	// Регистрация прямо здесь
+	/*Регистрация нового формата
 	_ = validate.RegisterValidation("date_format", func(fl validator.FieldLevel) bool {
 		date := fl.Field().String()
 		_, err := time.Parse("2006-01-02", date)
 		return err == nil
 	})
-
+	*/
 	return &service{
 		repo:     repo,
 		validate: validate,
@@ -71,7 +71,7 @@ func (s *service) Create(ctx context.Context, userID int, req CreateRequest) (*W
 
 func (s *service) GetByID(ctx context.Context, id int, userID int) (*Workouts, error) {
 	workout, err := s.repo.GetByID(ctx, id, userID)
-	if err == ErrWorkoutNotFound {
+	if errors.Is(err, ErrWorkoutNotFound) {
 		return nil, err
 	}
 	return workout, nil
@@ -79,7 +79,7 @@ func (s *service) GetByID(ctx context.Context, id int, userID int) (*Workouts, e
 
 func (s *service) GetAllByID(ctx context.Context, filter WorkoutFilter) ([]Workouts, error) {
 	workouts, err := s.repo.GetAllByUserID(ctx, filter)
-	if err == ErrWorkoutNotFound {
+	if errors.Is(err, ErrWorkoutNotFound) {
 		return nil, err
 	}
 	return workouts, nil

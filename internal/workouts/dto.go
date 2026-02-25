@@ -17,10 +17,10 @@ type Workouts struct {
 
 type WorkoutsResponse struct {
 	ID           int     `json:"id"`
-	Date         string  `json:"date" validate:"required"`
+	Date         string  `json:"date"`
 	TypeActivity string  `json:"type_activity"`
-	Distance     float64 `json:"distance" validate:"required"`
-	Duration     int     `json:"duration" validate:"required"`
+	Distance     float64 `json:"distance"`
+	Duration     int     `json:"duration"`
 }
 
 type CreateRequest struct {
@@ -38,10 +38,10 @@ type UpdateRequest struct {
 }
 
 type WorkoutFilter struct {
-	UserID int        `json:"user_id"`
+	UserID int        `json:"user_id" validate:"required"`
 	Type   string     `json:"type"`
-	From   *time.Time `json:"from"`
-	To     *time.Time `json:"to"`
+	From   *time.Time `json:"from" validate:"omitempty,gte=0"`
+	To     *time.Time `json:"to" validate:"omitempty,gte=0"`
 	Limit  int        `json:"limit"`
 	Offset int        `json:"offset"`
 }

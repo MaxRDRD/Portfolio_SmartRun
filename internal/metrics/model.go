@@ -1,7 +1,5 @@
 package metrics
 
-import "time"
-
 /*
 id SERIAL PRIMARY KEY,
 
@@ -11,8 +9,12 @@ id SERIAL PRIMARY KEY,
 	created_at TIMESTAMP NOT NULL DEFAULT NOW(),
 */
 type Metrics struct {
-	ID        int       `json:"id" validate:"required,min=2,max=50"`
-	Pace      int       `json:"pace" validate:"required,max=1000000"`
-	TimeRun   int       `json:"time_run" validate:"required,min=60"`
-	CreatedAt time.Time `json:"created_at" validate:"required"`
+	ID            int
+	UserID        int
+	TotalWorkouts int
+	TotalDistance float64
+	TotalDuration int
+	AvgPace       float64
+	From          string
+	To            string
 }

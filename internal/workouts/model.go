@@ -19,4 +19,5 @@ type Workouts struct {
 	Pace         float64
 	CreatedAt    time.Time
 	TypeActivity string
+	Calories     int //задел на будущее, пока не реализовано
 }
