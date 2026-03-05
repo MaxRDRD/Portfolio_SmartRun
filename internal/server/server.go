@@ -2,22 +2,24 @@ package server
 
 import (
 	"SmartRun/internal/user"
-	"context"
 	"net/http"
 	"os"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+	"golang.org/x/time/rate"
 )
 
-type contextKey string
-
-const userIDKey contextKey = "userID"
-
-func GetUserID(ctx context.Context) (int, bool) {
-	id, ok := ctx.Value(userIDKey).(int)
-	return id, ok
+func RateLimit(next http.Handler) http.Handler {
+	limiter := rate.NewLimiter(rate.Every(time.Minute), 5) // 5 запросов в минуту
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !limiter.Allow() {
+			http.Error(w, "too many requests", http.StatusTooManyRequests)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func NewServer(userHandler *user.Handler) http.Handler {
@@ -35,11 +37,14 @@ func NewServer(userHandler *user.Handler) http.Handler {
 	r.Route("/api", func(r chi.Router) {
 
 		r.Post("/register", userHandler.Register)
-		r.Post("/login", userHandler.Login)
+		r.Post("/login", RateLimit(http.HandlerFunc(userHandler.Login)).ServeHTTP)
+		r.Post("/refresh", RateLimit(http.HandlerFunc(userHandler.Refresh)).ServeHTTP)
 
 		r.Group(func(r chi.Router) {
 			r.Use(auth.JWT)
 			r.Get("/me", userHandler.Me)
+			r.Post("/enable-2fa", userHandler.Enable2FA)
+			r.Post("/verify-2fa", userHandler.Verify2FA)
 		})
 
 		r.Post("/workouts", nil)

@@ -3,5 +3,7 @@ CREATE TABLE IF NOT EXISTS users(
     name VARCHAR(100) NOT NULL,
     email VARCHAR(150) NOT NULL UNIQUE,
     password VARCHAR(150) NOT NULL,
+    totp_secret TEXT,
+    totp_enables BOOLEAN,
     created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );

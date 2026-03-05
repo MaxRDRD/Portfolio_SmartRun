@@ -1,6 +1,7 @@
 package server
 
 import (
+	"SmartRun/internal/auth"
 	"context"
 	"fmt"
 	"net/http"
@@ -55,7 +56,7 @@ func (m *Middleware) JWT(next http.Handler) http.Handler {
 			return
 		}
 
-		ctx := context.WithValue(r.Context(), userIDKey, claims.UserID)
+		ctx := context.WithValue(r.Context(), auth.UserIDKey, claims.UserID)
 
 		next.ServeHTTP(w, r.WithContext(ctx))
 
