@@ -1,0 +1,117 @@
+package postgres
+
+import (
+	"SmartRun/internal/model"
+	"SmartRun/internal/repository"
+	"SmartRun/pkg/my_errors"
+	"context"
+	"errors"
+
+	"github.com/jackc/pgx/v5"
+)
+
+type userRepository struct {
+	db repository.DB
+}
+
+func NewUserRepository(db repository.DB) repository.UserRepository {
+	return &userRepository{db: db}
+}
+
+func (r *userRepository) CreateUser(ctx context.Context, user *model.User) error {
+	query := `
+        INSERT INTO users (name, email, password, created_at)
+        VALUES ($1, $2, $3, NOW())
+        RETURNING id, created_at
+    `
+	return r.db.QueryRow(ctx, query,
+		user.Name,
+		user.Email,
+		user.Password,
+	).Scan(&user.ID, &user.CreatedAt)
+}
+
+/*
+	ID        int       `json:"id" validate:"required,min=2,max=50"`
+	Name      string    `json:"name" validate:"required,min=4"`
+	Email     string    `json:"email" validate:"required,email"`
+	Password  string    `json:"pass" validate:"required,min=8"`
+	CreatedAt time.Time `json:"created_at" validate:"required"`
+*/
+
+func (r *userRepository) GetUserByEmail(ctx context.Context, email string) (*model.User, error) {
+	query := `
+	SELECT id, name, email, password, created_at
+	FROM users
+	WHERE email = $1;
+	`
+
+	var user model.User
+	err := r.db.QueryRow(ctx, query, email).Scan(
+		&user.ID,
+		&user.Name,
+		&user.Email,
+		&user.Password,
+		&user.CreatedAt,
+	)
+
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, my_errors.ErrUserNotFound
+	}
+
+	return &user, err
+}
+
+func (r *userRepository) GetUserByID(ctx context.Context, id int64) (*model.User, error) {
+	query := `
+	SELECT id, name, email, password, created_at FROM users WHERE id = $1;
+	`
+
+	var user model.User
+	err := r.db.QueryRow(ctx, query, id).Scan(
+		&user.ID,
+		&user.Name,
+		&user.Email,
+		&user.Password,
+		&user.CreatedAt,
+	)
+
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, my_errors.ErrUserNotFound
+	}
+
+	return &user, err
+}
+
+func (r *userRepository) GetEmailByID(ctx context.Context, id int64) (string, error) {
+	query := `
+	SELECT email FROM users WHERE id = $1;
+	`
+
+	var email string
+	err := r.db.QueryRow(ctx, query, id).Scan(
+		&email,
+	)
+
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", my_errors.ErrUserNotFound
+	}
+
+	return email, err
+}
+
+// CreateTx — версия Create с транзакцией
+func (r *userRepository) CreateTx(ctx context.Context, tx pgx.Tx, user *model.User) error {
+	query := `GetEmailByID
+        INSERT INTO users (name, email, password, created_at)
+        VALUES ($1, $2, $3, NOW())
+        RETURNING id, created_at
+    `
+	return tx.QueryRow(ctx, query, user.Name, user.Email, user.Password).Scan(&user.ID, &user.CreatedAt)
+}
+
+func (r *userRepository) CleanupExpiredSessions(ctx context.Context) error {
+	query := `DELETE FROM sessions WHERE expires_at < NOW() - INTERVAL '1 day`
+	_, err := r.db.Exec(ctx, query)
+	return err
+}

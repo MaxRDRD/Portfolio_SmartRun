@@ -1,9 +1,14 @@
 package app
 
 import (
+	"SmartRun/cmd/server"
 	db "SmartRun/internal/DB"
-	"SmartRun/internal/server"
-	"SmartRun/internal/user"
+	"SmartRun/internal/config"
+	"SmartRun/internal/usecase/service"
+	"time"
+
+	myhttp "SmartRun/internal/handler/http"
+	repopostgres "SmartRun/internal/repository_impl/postgres"
 	"context"
 	"log"
 	"net/http"
@@ -18,9 +23,17 @@ func main() {
 		panic(err)
 	}
 
-	userRepo := user.NewRepository(pool)
-	userService := user.NewService(userRepo)
-	userHandler := user.NewHandler(userService)
+	userRepo := repopostgres.NewUserRepository(pool)
+	sessionRepo := repopostgres.NewSessionRepository(pool)
+	totpRepo := repopostgres.NewTOTPRepository(pool)
+	cfg := config.AuthConfig{
+		AccessTokenTTL:  15 * time.Minute,
+		RefreshTokenTTL: 30 * 24 * time.Hour,
+		JWTSecret:       os.Getenv("JWT_SECRET"),
+	}
+	txManager := repopostgres.NewTxManager(pool)
+	userService := service.NewUserService(userRepo, sessionRepo, totpRepo, cfg, txManager)
+	userHandler := myhttp.NewUserHandler(userService)
 
 	server := server.NewServer(userHandler)
 
