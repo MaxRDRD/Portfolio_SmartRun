@@ -110,8 +110,21 @@ func (r *userRepository) CreateTx(ctx context.Context, tx pgx.Tx, user *model.Us
 	return tx.QueryRow(ctx, query, user.Name, user.Email, user.Password).Scan(&user.ID, &user.CreatedAt)
 }
 
-func (r *userRepository) CleanupExpiredSessions(ctx context.Context) error {
-	query := `DELETE FROM sessions WHERE expires_at < NOW() - INTERVAL '1 day`
-	_, err := r.db.Exec(ctx, query)
-	return err
+func (r *userRepository) UpdatePassword(ctx context.Context, userID int64, newHash string) error {
+	query := `
+	UPDATE users
+	SET password = $1
+	WHERE id = $2
+	`
+
+	tag, err := r.db.Exec(ctx, query, newHash, userID)
+
+	if tag.RowsAffected() == 0 {
+		return my_errors.ErrUserNotFound
+	}
+
+	if err != nil {
+		return my_errors.ErrInvalidData
+	}
+	return nil
 }

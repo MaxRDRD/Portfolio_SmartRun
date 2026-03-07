@@ -13,5 +13,5 @@ type UserRepository interface {
 	GetUserByID(ctx context.Context, id int64) (*model.User, error)
 	GetEmailByID(ctx context.Context, id int64) (string, error)
 	CreateTx(ctx context.Context, tx pgx.Tx, user *model.User) error
-	CleanupExpiredSessions(ctx context.Context) error
+	UpdatePassword(ctx context.Context, userID int64, newHash string) error
 }

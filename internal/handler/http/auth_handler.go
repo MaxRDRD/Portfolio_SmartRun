@@ -287,3 +287,42 @@ func (h *UserHandler) Verify2FA(w http.ResponseWriter, r *http.Request) {
 		Message:     "2FA verified",
 	})
 }
+
+// POST /auth/password/reset/request
+func (h *UserHandler) RequestPasswordReset(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Email string `json:"email" validate:"required,email"`
+	}
+	// decode + validate
+
+	err := h.service.RequestPasswordReset(r.Context(), req.Email)
+	if err != nil {
+		http.Error(w, "failed to send reset email", http.StatusInternalServerError)
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]string{"message": "if email exists, reset link sent"})
+}
+
+// POST /auth/password/reset/confirm
+func (h *UserHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Token       string `json:"token"`
+		NewPassword string `json:"new_password" validate:"required,min=8"`
+	}
+	// decode + validate
+
+	userID, err := h.service.ValidateResetToken(r.Context(), req.Token)
+	if err != nil {
+		http.Error(w, "invalid or expired token", http.StatusBadRequest)
+		return
+	}
+
+	err = h.service.PerformPasswordReset(r.Context(), userID, req.NewPassword, req.Token)
+	if err != nil {
+		http.Error(w, "failed to reset password", http.StatusInternalServerError)
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]string{"message": "password reset successful"})
+}

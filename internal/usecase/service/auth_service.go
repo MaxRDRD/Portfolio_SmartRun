@@ -31,29 +31,38 @@ type AuthService interface {
 	IsTOTPEnabled(ctx context.Context, userID int64) (bool, error)
 	Refresh(ctx context.Context, refreshToken string) (*dto.AuthResult, error)
 	EnableTOTP(ctx context.Context, userID int64, email string) (string, []byte, error)
+	RequestPasswordReset(ctx context.Context, email string) error
+	ValidateResetToken(ctx context.Context, token string) (int64, error) // возвращает userID если токен валиден
+	PerformPasswordReset(ctx context.Context, userID int64, newPassword string, resetToken string) error
 }
 
 type authService struct {
-	userRepo    repository.UserRepository
-	sessionRepo repository.SessionRepository
-	totpRepo    repository.TotpRepository
-	cfg         config.AuthConfig
-	validate    *validator.Validate
-	txManager   repository.TxManager
+	userRepo          repository.UserRepository
+	sessionRepo       repository.SessionRepository
+	totpRepo          repository.TotpRepository
+	passwordResetRepo repository.PasswordResetRepository
+	emailService      EmailService
+	cfg               config.AuthConfig
+	validate          *validator.Validate
+	txManager         repository.TxManager
 }
 
 func NewUserService(userRepo repository.UserRepository,
 	sessionRepo repository.SessionRepository,
 	totpRepo repository.TotpRepository,
+	passwordResetRepo repository.PasswordResetRepository,
+	emailService EmailService,
 	cfg config.AuthConfig,
 	txManager repository.TxManager) AuthService {
 	return &authService{
-		userRepo:    userRepo,
-		sessionRepo: sessionRepo,
-		totpRepo:    totpRepo,
-		cfg:         cfg,
-		validate:    validator.New(),
-		txManager:   txManager,
+		userRepo:          userRepo,
+		sessionRepo:       sessionRepo,
+		totpRepo:          totpRepo,
+		passwordResetRepo: passwordResetRepo,
+		emailService:      emailService,
+		cfg:               cfg,
+		validate:          validator.New(),
+		txManager:         txManager,
 	}
 }
 
@@ -180,11 +189,16 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (*dto.Aut
 	accessToken, err := auth.GenerateAccessToken(user.ID, s.cfg.AccessTokenTTL)
 	expiresIn := int(s.cfg.AccessTokenTTL.Seconds()) // 900
 
+	enabled, err := s.IsTOTPEnabled(ctx, user.ID)
+	if err != nil {
+		return nil, fmt.Errorf("check totp enabled: %w", err)
+	}
+
 	userResp := &dto.UserResponse{
 		ID:          user.ID,
 		Email:       user.Email,
 		Name:        user.Name,
-		TOTPEnabled: false,
+		TOTPEnabled: enabled,
 	}
 
 	res := &dto.AuthResult{
@@ -383,4 +397,74 @@ func (s *authService) createSession(userID int64) (string, *model.Session, error
 	}
 
 	return refreshToken, session, nil
+}
+
+func (s *authService) RequestPasswordReset(ctx context.Context, email string) error {
+	user, err := s.userRepo.GetUserByEmail(ctx, email)
+	if err != nil {
+		return my_errors.ErrUserNotFound
+	}
+
+	token, err := auth.GenerateRefreshToken()
+	if err != nil {
+		return err
+	}
+	tokenHash := auth.HashToken(token)
+
+	expiresAt := time.Now().UTC().Add(60 * time.Minute) // 1 час — типично
+
+	err = s.passwordResetRepo.CreateResetToken(ctx, user.ID, tokenHash, expiresAt)
+	if err != nil {
+		return err
+	}
+
+	resetLink := fmt.Sprintf("https://your-app.com/reset-password?token=%s", token)
+	// Здесь вызов сервиса отправки почты
+	return s.emailService.SendPasswordResetEmail(ctx, user.Email, resetLink, user.Name)
+}
+
+func (s *authService) ValidateResetToken(ctx context.Context, token string) (int64, error) {
+	hash := auth.HashToken(token)
+	userID, used, err := s.passwordResetRepo.FindResetByTokenHash(ctx, hash)
+	if err != nil {
+		return 0, err
+	}
+	if used {
+		return 0, my_errors.ErrTokenAlreadyUsed
+	}
+	return userID, nil
+}
+
+func (s *authService) PerformPasswordReset(ctx context.Context, userID int64, newPassword string, resetToken string) error {
+	tx, err := s.txManager.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	// Проверяем токен ещё раз в транзакции
+	hash := auth.HashToken(resetToken)
+	repo := postgres.NewPasswordResetRepository(tx) // tx-aware
+	uid, used, err := repo.FindResetByTokenHash(ctx, hash)
+	if err != nil || uid != userID || used {
+		return my_errors.ErrInvalidToken
+	}
+
+	hashPass, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+
+	err = s.userRepo.UpdatePassword(ctx, userID, string(hashPass))
+	if err != nil {
+		return err
+	}
+
+	// Помечаем токен использованным ИЛИ удаляем
+	err = repo.MarkAsUsed(ctx, hash)
+	// Опционально: инвалидируем все сессии
+	sessionRepo := postgres.NewSessionRepository(tx)
+	sessionRepo.DeleteAllSessionsForUser(ctx, userID)
+
+	return tx.Commit(ctx)
 }
