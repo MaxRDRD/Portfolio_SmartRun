@@ -20,7 +20,16 @@ func NewSessionRepository(db repository.DB) repository.SessionRepository {
 	return &sessionRepository{db: db}
 }
 
+func (r *sessionRepository) getDB(ctx context.Context) repository.DB {
+	if tx, ok := getTx(ctx); ok {
+		return tx
+	}
+	return r.db // pool
+}
+
 func (r *sessionRepository) DeleteSessionByHash(ctx context.Context, hash string) error {
+	r.db = r.getDB(ctx)
+	
 	query := `
         DELETE FROM sessions
 		WHERE refresh_hash = $1;
@@ -49,6 +58,8 @@ id          UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
 */
 
 func (r *sessionRepository) CreateSession(ctx context.Context, session *model.Session) error {
+	r.db = r.getDB(ctx)
+	
 	query := `
 	INSERT INTO sessions (user_id, refresh_hash, expires_at, revoked, created_at)
         VALUES ($1, $2, $3, $4, DEFAULT)
@@ -60,6 +71,8 @@ func (r *sessionRepository) CreateSession(ctx context.Context, session *model.Se
 }
 
 func (r *sessionRepository) FindSessionByHash(ctx context.Context, hash string) (*model.Session, error) {
+	r.db = r.getDB(ctx)
+	
 	query := `
 	SELECT id, user_id, expires_at, revoked, created_at FROM sessions WHERE refresh_hash = $1;
 	`
@@ -86,12 +99,16 @@ func (r *sessionRepository) FindSessionByHash(ctx context.Context, hash string) 
 }
 
 func (r *sessionRepository) CleanupExpiredSessions(ctx context.Context) error {
+	r.db = r.getDB(ctx)
+	
 	query := `DELETE FROM sessions WHERE expires_at < NOW() - INTERVAL '1 day'`
 	_, err := r.db.Exec(ctx, query)
 	return err
 }
 
 func (r *sessionRepository) DeleteAllSessionsForUser(ctx context.Context, userID int64) error {
+	r.db = r.getDB(ctx)
+	
 	_, err := r.db.Exec(ctx, "DELETE FROM sessions WHERE user_id = $1", userID)
 	return err
 }

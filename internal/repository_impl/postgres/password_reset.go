@@ -18,7 +18,16 @@ func NewPasswordResetRepository(db repository.DB) repository.PasswordResetReposi
 	return &passwordResetRepo{db: db}
 }
 
+func (r *passwordResetRepo) getDB(ctx context.Context) repository.DB {
+	if tx, ok := getTx(ctx); ok {
+		return tx
+	}
+	return r.db // pool
+}
+
 func (r *passwordResetRepo) CreateResetToken(ctx context.Context, userID int64, tokenHash string, expiresAt time.Time) error {
+	r.db = r.getDB(ctx)
+	
 	query := `
         INSERT INTO password_resets (user_id, token_hash, expires_at)
         VALUES ($1, $2, $3)
@@ -28,11 +37,13 @@ func (r *passwordResetRepo) CreateResetToken(ctx context.Context, userID int64, 
 }
 
 func (r *passwordResetRepo) FindResetByTokenHash(ctx context.Context, tokenHash string) (userID int64, used bool, err error) {
+	r.db = r.getDB(ctx)
+	
 	query := `
         SELECT user_id, used 
         FROM password_resets 
         WHERE token_hash = $1 
-          AND expires_at > NOW()
+        AND expires_at > NOW()
     `
 	err = r.db.QueryRow(ctx, query, tokenHash).Scan(&userID, &used)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -42,6 +53,8 @@ func (r *passwordResetRepo) FindResetByTokenHash(ctx context.Context, tokenHash 
 }
 
 func (r *passwordResetRepo) MarkAsUsed(ctx context.Context, tokenHash string) error {
+	r.db = r.getDB(ctx)
+	
 	query := `
         UPDATE password_resets
 		SET used = $1
@@ -61,6 +74,8 @@ func (r *passwordResetRepo) MarkAsUsed(ctx context.Context, tokenHash string) er
 
 // DELETE FROM sessions WHERE expires_at < NOW() - INTERVAL '1 day'
 func (r *passwordResetRepo) DeleteResetToken(ctx context.Context, tokenHash string) error {
+	r.db = r.getDB(ctx)
+	
 	query := `
 	DELETE FROM password_resets WHERE token_hash = $1
 	`
@@ -77,6 +92,8 @@ func (r *passwordResetRepo) DeleteResetToken(ctx context.Context, tokenHash stri
 }
 
 func (r *passwordResetRepo) CleanupExpiredResetTokens(ctx context.Context) error {
+	r.db = r.getDB(ctx)
+	
 	query := `DELETE FROM password_resets WHERE expires_at < NOW() - INTERVAL '1 hour'`
 	_, err := r.db.Exec(ctx, query)
 	return err

@@ -19,9 +19,9 @@ func NewMetricsRepository(db repository.DB) repository.MetricsRepository {
 func (r *metricsRepository) GetMetrics(ctx context.Context, filter dto.MetricsFilter) ([]model.Metrics, error) {
 	sqlQuery := `
 	SELECT
-    	COUNT(*) as total_workouts,
-    	SUM(distance) as total_distance,
-    	SUM(duration) as total_duration
+    COUNT(*) as total_workouts,
+    SUM(distance) as total_distance,
+    SUM(duration) as total_duration
 	FROM workouts
 	WHERE user_id = $1
 	AND date BETWEEN $2 AND $3

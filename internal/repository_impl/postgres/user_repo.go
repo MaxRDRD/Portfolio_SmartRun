@@ -18,7 +18,17 @@ func NewUserRepository(db repository.DB) repository.UserRepository {
 	return &userRepository{db: db}
 }
 
+func (r *userRepository) getDB(ctx context.Context) repository.DB {
+	if tx, ok := getTx(ctx,); ok {
+		return tx
+	}
+	return r.db // pool
+}
+
 func (r *userRepository) CreateUser(ctx context.Context, user *model.User) error {
+	db := r.getDB(ctx)
+	r.db = db
+
 	query := `
         INSERT INTO users (name, email, password, created_at)
         VALUES ($1, $2, $3, NOW())
@@ -40,6 +50,9 @@ func (r *userRepository) CreateUser(ctx context.Context, user *model.User) error
 */
 
 func (r *userRepository) GetUserByEmail(ctx context.Context, email string) (*model.User, error) {
+	db := r.getDB(ctx)
+	r.db = db
+
 	query := `
 	SELECT id, name, email, password, created_at
 	FROM users
@@ -63,6 +76,9 @@ func (r *userRepository) GetUserByEmail(ctx context.Context, email string) (*mod
 }
 
 func (r *userRepository) GetUserByID(ctx context.Context, id int64) (*model.User, error) {
+	db := r.getDB(ctx)
+	r.db = db
+
 	query := `
 	SELECT id, name, email, password, created_at FROM users WHERE id = $1;
 	`
@@ -84,6 +100,9 @@ func (r *userRepository) GetUserByID(ctx context.Context, id int64) (*model.User
 }
 
 func (r *userRepository) GetEmailByID(ctx context.Context, id int64) (string, error) {
+	db := r.getDB(ctx)
+	r.db = db
+
 	query := `
 	SELECT email FROM users WHERE id = $1;
 	`
@@ -100,17 +119,11 @@ func (r *userRepository) GetEmailByID(ctx context.Context, id int64) (string, er
 	return email, err
 }
 
-// CreateTx — версия Create с транзакцией
-func (r *userRepository) CreateTx(ctx context.Context, tx pgx.Tx, user *model.User) error {
-	query := `GetEmailByID
-        INSERT INTO users (name, email, password, created_at)
-        VALUES ($1, $2, $3, NOW())
-        RETURNING id, created_at
-    `
-	return tx.QueryRow(ctx, query, user.Name, user.Email, user.Password).Scan(&user.ID, &user.CreatedAt)
-}
 
 func (r *userRepository) UpdatePassword(ctx context.Context, userID int64, newHash string) error {
+	db := r.getDB(ctx)
+	r.db = db
+
 	query := `
 	UPDATE users
 	SET password = $1

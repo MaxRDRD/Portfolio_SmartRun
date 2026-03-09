@@ -67,81 +67,68 @@ func NewUserService(userRepo repository.UserRepository,
 }
 
 func (s *authService) Register(ctx context.Context, req dto.RegisterRequest) (*dto.AuthResult, error) {
-	user := &model.User{
-		Name:     req.Name,
-		Email:    req.Email,
-		Password: req.Password,
-	}
 	if err := s.validate.Struct(req); err != nil {
 		return nil, err
 	}
-	// 1. Проверяем, существует ли email
-	_, err := s.userRepo.GetUserByEmail(ctx, user.Email)
 
-	if err == nil {
-		return nil, my_errors.ErrUserAlreadyExists
-	}
+	var result *dto.AuthResult
 
-	if !errors.Is(err, my_errors.ErrUserNotFound) {
-		return nil, err
-	}
+	err := s.txManager.WithTransaction(ctx, func(ctx context.Context) error {
+		// все репозитории теперь видят tx из контекста автоматически
 
-	// 2. Хешируем пароль
-	hash, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
-	if err != nil {
-		return nil, err
-	}
+		_, err := s.userRepo.GetUserByEmail(ctx, req.Email)
+		if err == nil {
+			return my_errors.ErrUserAlreadyExists
+		}
+		if !errors.Is(err, my_errors.ErrUserNotFound) {
+			return err
+		}
 
-	user.Password = string(hash)
+		hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+		if err != nil {
+			return err
+		}
 
-	// 3. Сохраняем
-	tx, err := s.txManager.Begin(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("begin transaction: %w", err)
-	}
-	defer tx.Rollback(ctx) // безопасный откат, если не будет Commit
+		user := &model.User{
+			Name:     req.Name,
+			Email:    req.Email,
+			Password: string(hash),
+		}
 
-	userRepoTx := postgres.NewUserRepository(tx)
-	err = userRepoTx.CreateUser(ctx, user)
-	if err != nil {
-		return nil, err
-	}
+		if err = s.userRepo.CreateUser(ctx, user); err != nil {
+			return err
+		}
 
-	refreshToken, session, err := s.createSession(user.ID)
-	if err != nil {
-		return nil, err
-	}
+		refreshToken, session, err := s.createSession(user.ID)
+		if err != nil {
+			return err
+		}
 
-	sessionRepoTx := postgres.NewSessionRepository(tx)
-	err = sessionRepoTx.CreateSession(ctx, session)
-	if err != nil {
-		return nil, err
-	}
+		if err = s.sessionRepo.CreateSession(ctx, session); err != nil {
+			return err
+		}
 
-	if err := tx.Commit(ctx); err != nil {
-		return nil, err
-	}
+		accessToken, err := auth.GenerateAccessToken(user.ID, s.cfg.AccessTokenTTL)
+		if err != nil {
+			return err
+		}
 
-	accessToken, err := auth.GenerateAccessToken(user.ID, s.cfg.AccessTokenTTL)
-	if err != nil {
-		return nil, err
-	}
+		result = &dto.AuthResult{
+			AccessToken:  accessToken,
+			ExpiresIn:    int(s.cfg.AccessTokenTTL.Seconds()),
+			RefreshToken: refreshToken,
+			User: &dto.UserResponse{
+				ID:          user.ID,
+				Email:       user.Email,
+				Name:        user.Name,
+				TOTPEnabled: false,
+			},
+		}
 
-	userResp := &dto.UserResponse{
-		ID:          user.ID,
-		Email:       user.Email,
-		Name:        user.Name,
-		TOTPEnabled: false,
-	}
+		return nil
+	})
 
-	res := &dto.AuthResult{
-		AccessToken:  accessToken,
-		ExpiresIn:    int(s.cfg.AccessTokenTTL.Seconds()),
-		RefreshToken: refreshToken,
-		User:         userResp,
-	}
-
-	return res, nil
+	return result, err
 }
 
 func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (*dto.AuthResult, error) {
@@ -154,61 +141,51 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (*dto.Aut
 		return nil, my_errors.ErrInvalidCredentials
 	}
 
-	err = bcrypt.CompareHashAndPassword(
-		[]byte(user.Password),
-		[]byte(req.Password),
-	)
-	if err != nil {
+	if err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.Password)); err != nil {
 		return nil, my_errors.ErrInvalidCredentials
 	}
-	tx, err := s.txManager.Begin(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("begin tx: %w", err)
-	}
-	defer tx.Rollback(ctx) // Автоматический откат, если не commit
 
-	refreshToken, session, err := s.createSession(user.ID)
-	if err != nil {
-		return nil, err
-	}
+	var result *dto.AuthResult
 
-	sessionRepoTx := postgres.NewSessionRepository(tx)
-	err = sessionRepoTx.DeleteAllSessionsForUser(ctx, user.ID)
-	if err != nil {
-		return nil, err
-	}
+	err = s.txManager.WithTransaction(ctx, func(ctx context.Context) error {
+		if err := s.sessionRepo.DeleteAllSessionsForUser(ctx, user.ID); err != nil {
+			return err
+		}
 
-	err = sessionRepoTx.CreateSession(ctx, session)
-	if err != nil {
-		return nil, err
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return nil, err
-	}
+		refreshToken, session, err := s.createSession(user.ID)
+		if err != nil {
+			return err
+		}
 
-	accessToken, err := auth.GenerateAccessToken(user.ID, s.cfg.AccessTokenTTL)
-	expiresIn := int(s.cfg.AccessTokenTTL.Seconds()) // 900
+		if err = s.sessionRepo.CreateSession(ctx, session); err != nil {
+			return err
+		}
 
-	enabled, err := s.IsTOTPEnabled(ctx, user.ID)
-	if err != nil {
-		return nil, fmt.Errorf("check totp enabled: %w", err)
-	}
+		accessToken, err := auth.GenerateAccessToken(user.ID, s.cfg.AccessTokenTTL)
+		if err != nil {
+			return err
+		}
 
-	userResp := &dto.UserResponse{
-		ID:          user.ID,
-		Email:       user.Email,
-		Name:        user.Name,
-		TOTPEnabled: enabled,
-	}
+		enabled, err := s.totpRepo.IsTOTPEnabled(ctx, user.ID)
+		if err != nil {
+			return err
+		}
 
-	res := &dto.AuthResult{
-		AccessToken:  accessToken,
-		ExpiresIn:    expiresIn,
-		RefreshToken: refreshToken,
-		User:         userResp,
-	}
+		result = &dto.AuthResult{
+			AccessToken:  accessToken,
+			ExpiresIn:    int(s.cfg.AccessTokenTTL.Seconds()),
+			RefreshToken: refreshToken,
+			User: &dto.UserResponse{
+				ID:          user.ID,
+				Email:       user.Email,
+				Name:        user.Name,
+				TOTPEnabled: enabled,
+			},
+		}
+		return nil
+	})
 
-	return res, nil
+	return result, err
 
 }
 
@@ -249,61 +226,43 @@ func (s *authService) Refresh(ctx context.Context, refreshToken string) (*dto.Au
 		return nil, my_errors.ErrInvalidToken
 	}
 
-	// Вычисляем хеш входящего refresh-токена
 	refreshHash := auth.HashToken(refreshToken)
 
-	// Ищем существующую сессию
 	session, err := s.sessionRepo.FindSessionByHash(ctx, refreshHash)
 	if err != nil {
-		// Здесь уже может быть ErrInvalidToken или ErrTokenNotFound
-		return nil, fmt.Errorf("find session: %w", err)
-	}
-
-	// Дополнительная проверка (на всякий случай, если FindSessionByHash её пропустил)
-	if session.Revoked || session.ExpiresAt.Before(time.Now().UTC()) {
-		return nil, my_errors.ErrInvalidToken
-	}
-
-	// Генерируем новый access token
-	newAccessToken, err := auth.GenerateAccessToken(session.UserId, s.cfg.AccessTokenTTL)
-	if err != nil {
-		return nil, fmt.Errorf("generate access token: %w", err)
-	}
-
-	// Генерируем новый refresh token (ротация)
-	newRefreshToken, newSession, err := s.createSession(session.UserId)
-
-	tx, err := s.txManager.Begin(ctx)
-	if err != nil {
-		return nil, err
-	}
-	defer tx.Rollback(ctx)
-
-	repoTx := postgres.NewSessionRepository(tx)
-
-	if err := repoTx.DeleteSessionByHash(ctx, refreshHash); err != nil {
 		return nil, err
 	}
 
-	if err := repoTx.CreateSession(ctx, newSession); err != nil {
-		return nil, err
-	}
+	var result *dto.AuthResult
 
-	if err := tx.Commit(ctx); err != nil {
-		return nil, err
-	}
+	err = s.txManager.WithTransaction(ctx, func(ctx context.Context) error {
+		if err := s.sessionRepo.DeleteSessionByHash(ctx, refreshHash); err != nil {
+			return err
+		}
 
-	// Вариант Б (альтернатива): просто обновляем существующую запись
-	// err = s.repo.UpdateSessionHash(ctx, refreshHash, newRefreshHash, newExpiresAt)
-	// — но требует дополнительного метода в repository
+		newRefresh, newSession, err := s.createSession(session.UserId)
+		if err != nil {
+			return err
+		}
 
-	res := &dto.AuthResult{
-		AccessToken:  newAccessToken,
-		ExpiresIn:    int(s.cfg.AccessTokenTTL.Seconds()),
-		RefreshToken: newRefreshToken,
-	}
+		if err = s.sessionRepo.CreateSession(ctx, newSession); err != nil {
+			return err
+		}
 
-	return res, nil
+		newAccess, err := auth.GenerateAccessToken(session.UserId, s.cfg.AccessTokenTTL)
+		if err != nil {
+			return err
+		}
+
+		result = &dto.AuthResult{
+			AccessToken:  newAccess,
+			ExpiresIn:    int(s.cfg.AccessTokenTTL.Seconds()),
+			RefreshToken: newRefresh,
+		}
+		return nil
+	})
+
+	return result, err
 }
 
 func (s *authService) EnableTOTP(ctx context.Context, userID int64, email string) (string, []byte, error) {
@@ -436,35 +395,31 @@ func (s *authService) ValidateResetToken(ctx context.Context, token string) (int
 }
 
 func (s *authService) PerformPasswordReset(ctx context.Context, userID int64, newPassword string, resetToken string) error {
-	tx, err := s.txManager.Begin(ctx)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback(ctx)
+	return s.txManager.WithTransaction(ctx, func(ctx context.Context) error {
+		hash := auth.HashToken(resetToken)
 
-	// Проверяем токен ещё раз в транзакции
-	hash := auth.HashToken(resetToken)
-	repo := postgres.NewPasswordResetRepository(tx) // tx-aware
-	uid, used, err := repo.FindResetByTokenHash(ctx, hash)
-	if err != nil || uid != userID || used {
-		return my_errors.ErrInvalidToken
-	}
+		uid, used, err := s.passwordResetRepo.FindResetByTokenHash(ctx, hash)
+		if err != nil {
+			return err
+		}
+		if uid != userID || used {
+			return my_errors.ErrInvalidToken
+		}
 
-	hashPass, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
-	if err != nil {
-		return err
-	}
+		passHash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+		if err != nil {
+			return err
+		}
 
-	err = s.userRepo.UpdatePassword(ctx, userID, string(hashPass))
-	if err != nil {
-		return err
-	}
+		if err = s.userRepo.UpdatePassword(ctx, userID, string(passHash)); err != nil {
+			return err
+		}
 
-	// Помечаем токен использованным ИЛИ удаляем
-	err = repo.MarkAsUsed(ctx, hash)
-	// Опционально: инвалидируем все сессии
-	sessionRepo := postgres.NewSessionRepository(tx)
-	sessionRepo.DeleteAllSessionsForUser(ctx, userID)
+		if err = s.passwordResetRepo.MarkAsUsed(ctx, hash); err != nil {
+			return err
+		}
 
-	return tx.Commit(ctx)
+		// Опционально, но рекомендуется
+		return s.sessionRepo.DeleteAllSessionsForUser(ctx, userID)
+	})
 }

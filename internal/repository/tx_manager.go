@@ -8,4 +8,5 @@ import (
 
 type TxManager interface {
 	Begin(ctx context.Context) (pgx.Tx, error)
+	WithTransaction(ctx context.Context, fn func(ctx context.Context) error) error
 }
