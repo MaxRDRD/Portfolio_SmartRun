@@ -15,15 +15,15 @@ type Claims struct {
 	jwt.RegisteredClaims
 }
 
-type Middleware struct {
+type AuthMiddleware struct {
 	secret string
 }
 
-func NewMiddleware(secret string) *Middleware {
-	return &Middleware{secret: secret}
+func NewAuthMiddleware(secret string) *AuthMiddleware {
+	return &AuthMiddleware{secret: secret}
 }
 
-func (m *Middleware) JWT(next http.Handler) http.Handler {
+func (m *AuthMiddleware) JWT(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 
 		tokenString := r.Header.Get("Authorization")
