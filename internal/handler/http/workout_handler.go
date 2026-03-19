@@ -80,7 +80,7 @@ func (h *WorkoutHandler) Update(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *WorkoutHandler) GetAll(w http.ResponseWriter, r *http.Request) {
-	userID := r.Context().Value("user_id").(int)
+	userID := r.Context().Value("user_id").(int64)
 
 	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))

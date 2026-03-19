@@ -19,7 +19,7 @@ func NewUserRepository(db repository.DB) repository.UserRepository {
 }
 
 func (r *userRepository) getDB(ctx context.Context) repository.DB {
-	if tx, ok := getTx(ctx,); ok {
+	if tx, ok := getTx(ctx); ok {
 		return tx
 	}
 	return r.db // pool
@@ -27,14 +27,13 @@ func (r *userRepository) getDB(ctx context.Context) repository.DB {
 
 func (r *userRepository) CreateUser(ctx context.Context, user *model.User) error {
 	db := r.getDB(ctx)
-	r.db = db
 
 	query := `
         INSERT INTO users (name, email, password, created_at)
         VALUES ($1, $2, $3, NOW())
         RETURNING id, created_at
     `
-	return r.db.QueryRow(ctx, query,
+	return db.QueryRow(ctx, query,
 		user.Name,
 		user.Email,
 		user.Password,
@@ -51,7 +50,6 @@ func (r *userRepository) CreateUser(ctx context.Context, user *model.User) error
 
 func (r *userRepository) GetUserByEmail(ctx context.Context, email string) (*model.User, error) {
 	db := r.getDB(ctx)
-	r.db = db
 
 	query := `
 	SELECT id, name, email, password, created_at
@@ -60,7 +58,7 @@ func (r *userRepository) GetUserByEmail(ctx context.Context, email string) (*mod
 	`
 
 	var user model.User
-	err := r.db.QueryRow(ctx, query, email).Scan(
+	err := db.QueryRow(ctx, query, email).Scan(
 		&user.ID,
 		&user.Name,
 		&user.Email,
@@ -77,14 +75,13 @@ func (r *userRepository) GetUserByEmail(ctx context.Context, email string) (*mod
 
 func (r *userRepository) GetUserByID(ctx context.Context, id int64) (*model.User, error) {
 	db := r.getDB(ctx)
-	r.db = db
 
 	query := `
 	SELECT id, name, email, password, created_at FROM users WHERE id = $1;
 	`
 
 	var user model.User
-	err := r.db.QueryRow(ctx, query, id).Scan(
+	err := db.QueryRow(ctx, query, id).Scan(
 		&user.ID,
 		&user.Name,
 		&user.Email,
@@ -101,14 +98,13 @@ func (r *userRepository) GetUserByID(ctx context.Context, id int64) (*model.User
 
 func (r *userRepository) GetEmailByID(ctx context.Context, id int64) (string, error) {
 	db := r.getDB(ctx)
-	r.db = db
 
 	query := `
 	SELECT email FROM users WHERE id = $1;
 	`
 
 	var email string
-	err := r.db.QueryRow(ctx, query, id).Scan(
+	err := db.QueryRow(ctx, query, id).Scan(
 		&email,
 	)
 
@@ -122,7 +118,6 @@ func (r *userRepository) GetEmailByID(ctx context.Context, id int64) (string, er
 
 func (r *userRepository) UpdatePassword(ctx context.Context, userID int64, newHash string) error {
 	db := r.getDB(ctx)
-	r.db = db
 
 	query := `
 	UPDATE users
@@ -130,14 +125,13 @@ func (r *userRepository) UpdatePassword(ctx context.Context, userID int64, newHa
 	WHERE id = $2
 	`
 
-	tag, err := r.db.Exec(ctx, query, newHash, userID)
-
-	if tag.RowsAffected() == 0 {
-		return my_errors.ErrUserNotFound
-	}
+	tag, err := db.Exec(ctx, query, newHash, userID)
 
 	if err != nil {
-		return my_errors.ErrInvalidData
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return my_errors.ErrUserNotFound
 	}
 	return nil
 }

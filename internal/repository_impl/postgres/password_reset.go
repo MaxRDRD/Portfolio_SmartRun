@@ -26,26 +26,26 @@ func (r *passwordResetRepo) getDB(ctx context.Context) repository.DB {
 }
 
 func (r *passwordResetRepo) CreateResetToken(ctx context.Context, userID int64, tokenHash string, expiresAt time.Time) error {
-	r.db = r.getDB(ctx)
-	
+	db := r.getDB(ctx)
+
 	query := `
         INSERT INTO password_resets (user_id, token_hash, expires_at)
         VALUES ($1, $2, $3)
     `
-	_, err := r.db.Exec(ctx, query, userID, tokenHash, expiresAt)
+	_, err := db.Exec(ctx, query, userID, tokenHash, expiresAt)
 	return err
 }
 
 func (r *passwordResetRepo) FindResetByTokenHash(ctx context.Context, tokenHash string) (userID int64, used bool, err error) {
-	r.db = r.getDB(ctx)
-	
+	db := r.getDB(ctx)
+
 	query := `
         SELECT user_id, used 
         FROM password_resets 
         WHERE token_hash = $1 
         AND expires_at > NOW()
     `
-	err = r.db.QueryRow(ctx, query, tokenHash).Scan(&userID, &used)
+	err = db.QueryRow(ctx, query, tokenHash).Scan(&userID, &used)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return 0, false, my_errors.ErrTokenNotFound
 	}
@@ -53,48 +53,45 @@ func (r *passwordResetRepo) FindResetByTokenHash(ctx context.Context, tokenHash 
 }
 
 func (r *passwordResetRepo) MarkAsUsed(ctx context.Context, tokenHash string) error {
-	r.db = r.getDB(ctx)
-	
+	db := r.getDB(ctx)
+
 	query := `
         UPDATE password_resets
 		SET used = $1
 		WHERE token_hash = $2
     `
 
-	tag, err := r.db.Exec(ctx, query, true, tokenHash)
-
+	tag, err := db.Exec(ctx, query, true, tokenHash)
+	if err != nil {
+		return err
+	}
 	if tag.RowsAffected() == 0 {
 		return my_errors.ErrPasswordResetHashNotFount
-	}
-	if err != nil {
-		return my_errors.ErrInvalidData
 	}
 	return nil
 }
 
-// DELETE FROM sessions WHERE expires_at < NOW() - INTERVAL '1 day'
 func (r *passwordResetRepo) DeleteResetToken(ctx context.Context, tokenHash string) error {
-	r.db = r.getDB(ctx)
-	
+	db := r.getDB(ctx)
+
 	query := `
 	DELETE FROM password_resets WHERE token_hash = $1
 	`
-	tag, err := r.db.Exec(ctx, query, tokenHash)
-
+	tag, err := db.Exec(ctx, query, tokenHash)
+	if err != nil {
+		return err
+	}
 	if tag.RowsAffected() == 0 {
 		return my_errors.ErrPasswordResetHashNotFount
-	}
-	if err != nil {
-		return my_errors.ErrInvalidData
 	}
 	return nil
 
 }
 
 func (r *passwordResetRepo) CleanupExpiredResetTokens(ctx context.Context) error {
-	r.db = r.getDB(ctx)
-	
-	query := `DELETE FROM password_resets WHERE expires_at < NOW() - INTERVAL '1 hour'`
-	_, err := r.db.Exec(ctx, query)
+	db := r.getDB(ctx)
+
+	query := `DELETE FROM password_resets WHERE expires_at < NOW()`
+	_, err := db.Exec(ctx, query)
 	return err
 }

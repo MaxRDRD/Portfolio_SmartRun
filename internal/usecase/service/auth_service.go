@@ -11,6 +11,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
+	"strings"
 
 	"time"
 
@@ -67,7 +69,10 @@ func NewUserService(userRepo repository.UserRepository,
 }
 
 func (s *authService) Register(ctx context.Context, req dto.RegisterRequest) (*dto.AuthResult, error) {
+	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
+	req.Password = strings.TrimSpace(req.Password)
 	if err := s.validate.Struct(req); err != nil {
+		log.Printf("register validate failed email=%q err=%v", req.Email, err)
 		return nil, err
 	}
 
@@ -88,6 +93,12 @@ func (s *authService) Register(ctx context.Context, req dto.RegisterRequest) (*d
 		if err != nil {
 			return err
 		}
+		hp := string(hash)
+		prefix := hp
+		if len(prefix) > 12 {
+			prefix = prefix[:12]
+		}
+		log.Printf("register bcrypt ok email=%q hashPrefix=%q hashLen=%d passLen=%d", req.Email, prefix, len(hp), len(req.Password))
 
 		user := &model.User{
 			Name:     req.Name,
@@ -132,16 +143,29 @@ func (s *authService) Register(ctx context.Context, req dto.RegisterRequest) (*d
 }
 
 func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (*dto.AuthResult, error) {
+	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
+	req.Password = strings.TrimSpace(req.Password)
 	if err := s.validate.Struct(req); err != nil {
+		log.Printf("login validate failed email=%q passLen=%d err=%v", req.Email, len(req.Password), err)
 		return nil, err
 	}
 
+	log.Printf("login attempt email=%q passLen=%d", req.Email, len(req.Password))
 	user, err := s.userRepo.GetUserByEmail(ctx, req.Email)
 	if err != nil {
+		log.Printf("login user lookup failed email=%q err=%v", req.Email, err)
 		return nil, my_errors.ErrInvalidCredentials
 	}
 
 	if err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.Password)); err != nil {
+		// dev-диагностика: не печатаем хэш целиком
+		prefix := user.Password
+		if len(prefix) > 12 {
+			prefix = prefix[:12]
+		}
+		log.Printf("login failed email=%q hashPrefix=%q hashLen=%d passLen=%d bcryptErr=%v",
+			req.Email, prefix, len(user.Password), len(req.Password), err,
+		)
 		return nil, my_errors.ErrInvalidCredentials
 	}
 
@@ -359,6 +383,7 @@ func (s *authService) createSession(userID int64) (string, *model.Session, error
 }
 
 func (s *authService) RequestPasswordReset(ctx context.Context, email string) error {
+	email = strings.ToLower(strings.TrimSpace(email))
 	user, err := s.userRepo.GetUserByEmail(ctx, email)
 	if err != nil {
 		return my_errors.ErrUserNotFound
@@ -377,7 +402,11 @@ func (s *authService) RequestPasswordReset(ctx context.Context, email string) er
 		return err
 	}
 
-	resetLink := fmt.Sprintf("https://your-app.com/reset-password?token=%s", token)
+	publicURL := s.cfg.PublicURL
+	if publicURL == "" {
+		publicURL = "http://localhost:3000"
+	}
+	resetLink := fmt.Sprintf("%s/reset-password?token=%s", publicURL, token)
 	// Здесь вызов сервиса отправки почты
 	return s.emailService.SendPasswordResetEmail(ctx, user.Email, resetLink, user.Name)
 }

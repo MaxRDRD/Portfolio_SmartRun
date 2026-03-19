@@ -1,4 +1,4 @@
-package app
+package main
 
 import (
 	"SmartRun/cmd/server"
@@ -30,6 +30,10 @@ func main() {
 		AccessTokenTTL:  15 * time.Minute,
 		RefreshTokenTTL: 30 * 24 * time.Hour,
 		JWTSecret:       os.Getenv("JWT_SECRET"),
+		PublicURL:       os.Getenv("APP_PUBLIC_URL"),
+	}
+	if cfg.PublicURL == "" {
+		cfg.PublicURL = "http://localhost:3000"
 	}
 	txManager := repopostgres.NewTxManager(pool)
 	userService := service.NewUserService(userRepo, sessionRepo, totpRepo, cfg, txManager)

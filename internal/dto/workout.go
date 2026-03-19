@@ -3,7 +3,7 @@ package dto
 import "time"
 
 type WorkoutsResponse struct {
-	ID           int     `json:"id"`
+	ID           int64   `json:"id"`
 	Date         string  `json:"date"`
 	TypeActivity string  `json:"type_activity"`
 	Distance     float64 `json:"distance"`
@@ -25,7 +25,7 @@ type UpdateRequest struct {
 }
 
 type WorkoutFilter struct {
-	UserID int        `json:"user_id" validate:"required"`
+	UserID int64      `json:"user_id" validate:"required"`
 	Type   string     `json:"type"`
 	From   *time.Time `json:"from" validate:"omitempty,gte=0"`
 	To     *time.Time `json:"to" validate:"omitempty,gte=0"`

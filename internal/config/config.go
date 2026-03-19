@@ -8,6 +8,7 @@ type AuthConfig struct {
 	AccessTokenTTL  time.Duration
 	RefreshTokenTTL time.Duration
 	JWTSecret       string
+	PublicURL       string
 	Email           EmailConfig
 }
 

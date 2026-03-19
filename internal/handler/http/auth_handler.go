@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"os"
 )
@@ -51,17 +52,22 @@ func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
 		// Domain:   "example.com",           // если нужно
 	})
 
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 
-	json.NewEncoder(w).Encode(dto.UserResponse{
-		ID:    res.User.ID,
-		Email: res.User.Email,
-		Name:  res.User.Name,
-	})
-	json.NewEncoder(w).Encode(dto.AuthResponse{
-		AccessToken: res.AccessToken,
-		ExpiresIn:   res.ExpiresIn,
-		Require2FA:  false,
+	type registerResponse struct {
+		User dto.UserResponse `json:"user"`
+		Auth dto.AuthResponse `json:"auth"`
+	}
+
+	_ = json.NewEncoder(w).Encode(registerResponse{
+		User: *res.User,
+		Auth: dto.AuthResponse{
+			AccessToken: res.AccessToken,
+			ExpiresIn:   res.ExpiresIn,
+			Require2FA:  false,
+			Message:     "registered",
+		},
 	})
 }
 
@@ -71,17 +77,25 @@ func (h *UserHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid request", http.StatusBadRequest)
+		return
 	}
 
 	res, err := h.service.Login(r.Context(), req)
 	if err != nil {
-		http.Error(w, "invalid credentials", http.StatusUnauthorized)
+		if errors.Is(err, my_errors.ErrInvalidCredentials) {
+			http.Error(w, "invalid credentials", http.StatusUnauthorized)
+			return
+		}
+		log.Printf("login internal error: %v", err)
+		http.Error(w, "server error", http.StatusInternalServerError)
+		return
 	}
 
 	// проверка 2FA статуса
 	totpEnabled, err := h.service.IsTOTPEnabled(r.Context(), res.User.ID)
 	if err != nil {
 		http.Error(w, "server error", http.StatusInternalServerError)
+		return
 	}
 
 	// Устанавливаем HttpOnly cookie с refresh-токеном
@@ -100,6 +114,7 @@ func (h *UserHandler) Login(w http.ResponseWriter, r *http.Request) {
 	resp := dto.AuthResponse{
 		AccessToken: res.AccessToken,
 		ExpiresIn:   res.ExpiresIn,
+		Message:     "ok",
 	}
 
 	if totpEnabled {
@@ -107,7 +122,7 @@ func (h *UserHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
+	_ = json.NewEncoder(w).Encode(resp)
 }
 
 func (h *UserHandler) Me(w http.ResponseWriter, r *http.Request) {
@@ -128,9 +143,10 @@ func (h *UserHandler) Me(w http.ResponseWriter, r *http.Request) {
 	totpEnabled, err := h.service.IsTOTPEnabled(r.Context(), userID)
 	if err != nil {
 		http.Error(w, "server error", http.StatusInternalServerError)
+		return
 	}
 
-	json.NewEncoder(w).Encode(dto.UserResponse{
+	_ = json.NewEncoder(w).Encode(dto.UserResponse{
 		ID:          userResp.ID,
 		Email:       userResp.Email,
 		Name:        userResp.Name,
@@ -167,8 +183,10 @@ func (h *UserHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	})
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(dto.AuthResponse{
+	_ = json.NewEncoder(w).Encode(dto.AuthResponse{
 		AccessToken: res.AccessToken,
+		ExpiresIn:   res.ExpiresIn,
+		Message:     "ok",
 	})
 }
 
@@ -195,7 +213,7 @@ func (h *UserHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	h.deleteRefreshCookie(w)
 
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{
+	_ = json.NewEncoder(w).Encode(map[string]string{
 		"message": "logged out successfully",
 	})
 }
@@ -227,7 +245,7 @@ func (h *UserHandler) Enable2FA(w http.ResponseWriter, r *http.Request) {
 
 	// Возвращаем QR как PNG-картинку
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(resp)
+	_ = json.NewEncoder(w).Encode(resp)
 }
 
 func (h *UserHandler) Verify2FA(w http.ResponseWriter, r *http.Request) {
@@ -288,29 +306,49 @@ func (h *UserHandler) Verify2FA(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// POST /auth/password/reset/request
+// POST /api/password/reset/request
 func (h *UserHandler) RequestPasswordReset(w http.ResponseWriter, r *http.Request) {
 	var req struct {
-		Email string `json:"email" validate:"required,email"`
+		Email string `json:"email"`
 	}
-	// decode + validate
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid json", http.StatusBadRequest)
+		return
+	}
+	if req.Email == "" {
+		http.Error(w, "email required", http.StatusBadRequest)
+		return
+	}
 
 	err := h.service.RequestPasswordReset(r.Context(), req.Email)
-	if err != nil {
+	// Важно: не выдаём факт существования email.
+	if err != nil && !errors.Is(err, my_errors.ErrUserNotFound) {
 		http.Error(w, "failed to send reset email", http.StatusInternalServerError)
 		return
 	}
 
-	json.NewEncoder(w).Encode(map[string]string{"message": "if email exists, reset link sent"})
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]string{"message": "if email exists, reset link sent"})
 }
 
-// POST /auth/password/reset/confirm
+// POST /api/password/reset/confirm
 func (h *UserHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Token       string `json:"token"`
-		NewPassword string `json:"new_password" validate:"required,min=8"`
+		NewPassword string `json:"new_password"`
 	}
-	// decode + validate
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid json", http.StatusBadRequest)
+		return
+	}
+	if req.Token == "" || req.NewPassword == "" {
+		http.Error(w, "token and new_password required", http.StatusBadRequest)
+		return
+	}
+	if len(req.NewPassword) < 8 {
+		http.Error(w, "new_password must be at least 8 characters", http.StatusBadRequest)
+		return
+	}
 
 	userID, err := h.service.ValidateResetToken(r.Context(), req.Token)
 	if err != nil {
@@ -324,5 +362,6 @@ func (h *UserHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	json.NewEncoder(w).Encode(map[string]string{"message": "password reset successful"})
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]string{"message": "password reset successful"})
 }

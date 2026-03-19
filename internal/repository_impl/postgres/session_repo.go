@@ -28,14 +28,14 @@ func (r *sessionRepository) getDB(ctx context.Context) repository.DB {
 }
 
 func (r *sessionRepository) DeleteSessionByHash(ctx context.Context, hash string) error {
-	r.db = r.getDB(ctx)
-	
+	db := r.getDB(ctx)
+
 	query := `
         DELETE FROM sessions
 		WHERE refresh_hash = $1;
     `
 
-	tag, err := r.db.Exec(ctx, query, hash)
+	tag, err := db.Exec(ctx, query, hash)
 	if err != nil {
 		return fmt.Errorf("failed to delete session: %w", err)
 	}
@@ -58,26 +58,26 @@ id          UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
 */
 
 func (r *sessionRepository) CreateSession(ctx context.Context, session *model.Session) error {
-	r.db = r.getDB(ctx)
-	
+	db := r.getDB(ctx)
+
 	query := `
 	INSERT INTO sessions (user_id, refresh_hash, expires_at, revoked, created_at)
         VALUES ($1, $2, $3, $4, DEFAULT)
         RETURNING id, created_at
 	`
 
-	return r.db.QueryRow(ctx, query, session.UserId, session.RefreshHash, session.ExpiresAt, session.Revoked).Scan(&session.ID, &session.CreatedAt)
+	return db.QueryRow(ctx, query, session.UserId, session.RefreshHash, session.ExpiresAt, session.Revoked).Scan(&session.ID, &session.CreatedAt)
 
 }
 
 func (r *sessionRepository) FindSessionByHash(ctx context.Context, hash string) (*model.Session, error) {
-	r.db = r.getDB(ctx)
-	
+	db := r.getDB(ctx)
+
 	query := `
 	SELECT id, user_id, expires_at, revoked, created_at FROM sessions WHERE refresh_hash = $1;
 	`
 	var session model.Session
-	err := r.db.QueryRow(ctx, query, hash).Scan(
+	err := db.QueryRow(ctx, query, hash).Scan(
 		&session.ID,
 		&session.UserId,
 		&session.ExpiresAt,
@@ -99,16 +99,16 @@ func (r *sessionRepository) FindSessionByHash(ctx context.Context, hash string) 
 }
 
 func (r *sessionRepository) CleanupExpiredSessions(ctx context.Context) error {
-	r.db = r.getDB(ctx)
-	
+	db := r.getDB(ctx)
+
 	query := `DELETE FROM sessions WHERE expires_at < NOW() - INTERVAL '1 day'`
-	_, err := r.db.Exec(ctx, query)
+	_, err := db.Exec(ctx, query)
 	return err
 }
 
 func (r *sessionRepository) DeleteAllSessionsForUser(ctx context.Context, userID int64) error {
-	r.db = r.getDB(ctx)
-	
-	_, err := r.db.Exec(ctx, "DELETE FROM sessions WHERE user_id = $1", userID)
+	db := r.getDB(ctx)
+
+	_, err := db.Exec(ctx, "DELETE FROM sessions WHERE user_id = $1", userID)
 	return err
 }

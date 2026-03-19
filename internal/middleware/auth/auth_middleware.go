@@ -10,11 +10,6 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-type Claims struct {
-	UserID int `json:"user_id"`
-	jwt.RegisteredClaims
-}
-
 type AuthMiddleware struct {
 	secret string
 }
@@ -38,18 +33,17 @@ func (m *AuthMiddleware) JWT(next http.Handler) http.Handler {
 		}
 		tokenString = strings.TrimPrefix(tokenString, "Bearer ")
 
-		claims := &Claims{}
+		claims := &auth.AccessTokenClaims{}
 
 		token, err := jwt.ParseWithClaims(
 			tokenString,
 			claims,
 			func(token *jwt.Token) (interface{}, error) {
-				if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-					return nil, fmt.Errorf("unexpected signing method")
+				if token.Method != jwt.SigningMethodHS256 { // Уточняем: только HS256
+					return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
 				}
 				return []byte(m.secret), nil
-			},
-		)
+			})
 
 		if err != nil || !token.Valid {
 			http.Error(w, "invalid token", http.StatusUnauthorized)

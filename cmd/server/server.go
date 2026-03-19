@@ -52,7 +52,7 @@ func NewServer(userHandler *myhttp.UserHandler) http.Handler {
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(60 * time.Second))
 
-	secret := os.Getenv("SECRET_KEY")
+	secret := os.Getenv("JWT_SECRET")
 	auth := my_middleware.NewAuthMiddleware(secret)
 
 	r.Route("/api", func(r chi.Router) {
@@ -60,6 +60,8 @@ func NewServer(userHandler *myhttp.UserHandler) http.Handler {
 		r.With(authLimiter).Post("/register", userHandler.Register)
 		r.With(loginLimiter).Post("/login", http.HandlerFunc(userHandler.Login).ServeHTTP)
 		r.With(authLimiter).Post("/refresh", http.HandlerFunc(userHandler.Refresh).ServeHTTP)
+		r.With(authLimiter).Post("/password/reset/request", userHandler.RequestPasswordReset)
+		r.With(authLimiter).Post("/password/reset/confirm", userHandler.ResetPassword)
 
 		r.Group(func(r chi.Router) {
 			r.Use(auth.JWT)
@@ -72,6 +74,8 @@ func NewServer(userHandler *myhttp.UserHandler) http.Handler {
 		r.Get("/workouts", nil)
 		r.Get("/workouts/{id}", nil)
 		r.Delete("/workouts/{id}", nil)
+
 	})
+
 	return r
 }

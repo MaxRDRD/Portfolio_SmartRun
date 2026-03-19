@@ -2,7 +2,7 @@ include .env
 export
 
 service-run:
-	go run main.go
+	go run ./cmd/app
 
 migrate-up:
 	powershell -Command "migrate -path migrations -database ${CONN_STRING} up"

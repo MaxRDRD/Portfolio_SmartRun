@@ -7,6 +7,7 @@ import (
 	"embed"
 	"fmt"
 	"html/template"
+	"log"
 	"time"
 
 	"github.com/wneessen/go-mail"
@@ -26,6 +27,11 @@ type emailService struct {
 }
 
 func NewEmailService(cfg config.EmailConfig) (EmailService, error) {
+	// В dev окружении часто нет SMTP. Если он не настроен — просто логируем письма.
+	if cfg.Host == "" {
+		return &logEmailService{}, nil
+	}
+
 	clientOpts := []mail.Option{
 		mail.WithPort(cfg.Port),
 		mail.WithUsername(cfg.Username),
@@ -59,6 +65,13 @@ func NewEmailService(cfg config.EmailConfig) (EmailService, error) {
 		from:     cfg.From,
 		fromName: cfg.FromName,
 	}, nil
+}
+
+type logEmailService struct{}
+
+func (s *logEmailService) SendPasswordResetEmail(ctx context.Context, to string, resetLink string, userName string) error {
+	log.Printf("[DEV] password reset email to=%s name=%s link=%s", to, userName, resetLink)
+	return nil
 }
 
 func (s *emailService) SendPasswordResetEmail(ctx context.Context, to, resetLink, userName string) error {

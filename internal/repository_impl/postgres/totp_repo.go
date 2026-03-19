@@ -27,13 +27,16 @@ func (r *totpRepository) getDB(ctx context.Context) repository.DB {
 }
 
 func (r *totpRepository) GetTOTPSecret(ctx context.Context, userID int64) (string, error) {
-	r.db = r.getDB(ctx)
+	db := r.getDB(ctx)
 	
-	query := `SELECT totp_secret FROM user_totp WHERE id = $1;`
+	query := `SELECT totp_secret FROM users WHERE id = $1;`
 
 	var TOTPSecret string
-	err := r.db.QueryRow(ctx, query, userID).Scan(&TOTPSecret)
+	err := db.QueryRow(ctx, query, userID).Scan(&TOTPSecret)
 	if errors.Is(err, pgx.ErrNoRows) {
+		return "", nil
+	}
+	if TOTPSecret == "" {
 		return "", nil
 	}
 
@@ -47,7 +50,7 @@ func (r *totpRepository) GetTOTPSecret(ctx context.Context, userID int64) (strin
 }
 
 func (r *totpRepository) UpdateTOTPSecret(ctx context.Context, userID int64, secret string, enabled bool) error {
-	r.db = r.getDB(ctx)
+	db := r.getDB(ctx)
 	
 	encrypted, err := mycrypto.Encrypt(secret)
 	if err != nil {
@@ -55,12 +58,12 @@ func (r *totpRepository) UpdateTOTPSecret(ctx context.Context, userID int64, sec
 	}
 
 	query := `
-	UPDATE user_totp
-	SET totp_secret=$1, totp_enabled=$2
+	UPDATE users
+	SET totp_secret=$1, totp_enables=$2
 	WHERE id=$3
 	`
 
-	tag, err := r.db.Exec(ctx, query, encrypted, enabled, userID)
+	tag, err := db.Exec(ctx, query, encrypted, enabled, userID)
 
 	if err != nil {
 		return fmt.Errorf("failed to update TOTPSecret: %w", err)
@@ -74,12 +77,12 @@ func (r *totpRepository) UpdateTOTPSecret(ctx context.Context, userID int64, sec
 }
 
 func (r *totpRepository) IsTOTPEnabled(ctx context.Context, userID int64) (bool, error) {
-	r.db = r.getDB(ctx)
+	db := r.getDB(ctx)
 	
-	query := `SELECT totp_enabled FROM user_totp WHERE id = $1;`
+	query := `SELECT COALESCE(totp_enables, false) FROM users WHERE id = $1;`
 
 	var TOTPEnabled bool
-	err := r.db.QueryRow(ctx, query, userID).Scan(&TOTPEnabled)
+	err := db.QueryRow(ctx, query, userID).Scan(&TOTPEnabled)
 
 	return TOTPEnabled, err
 }
