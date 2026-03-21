@@ -10,5 +10,9 @@ type User struct {
 	Email       string
 	Password    string
 	CreatedAt   time.Time
-	TOTPEnabled bool //Флаг, включена ли 2FA.
+	TOTPEnabled bool
+	WeightKg    float64
+	RestingHR   int
+	MaxHR       int
+	Gender      string
 }

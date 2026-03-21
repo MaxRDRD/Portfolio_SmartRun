@@ -43,7 +43,7 @@ var (
 	})
 )
 
-func NewServer(userHandler *myhttp.UserHandler) http.Handler {
+func NewServer(userHandler *myhttp.UserHandler, workoutHandler *myhttp.WorkoutHandler) http.Handler {
 	r := chi.NewRouter()
 
 	r.Use(middleware.RequestID)
@@ -68,13 +68,13 @@ func NewServer(userHandler *myhttp.UserHandler) http.Handler {
 			r.With(userLimiter).Get("/me", userHandler.Me)
 			r.Post("/enable-2fa", userHandler.Enable2FA)
 			r.Post("/verify-2fa", userHandler.Verify2FA)
+
+			r.With(userLimiter).Post("/workouts", workoutHandler.Create)
+			r.With(userLimiter).Get("/workouts", workoutHandler.GetAll)
+			r.With(userLimiter).Get("/workouts/{id}", workoutHandler.GetByID)
+			r.With(userLimiter).Put("/workouts/{id}", workoutHandler.Update)
+			r.With(userLimiter).Delete("/workouts/{id}", workoutHandler.Delete)
 		})
-
-		r.Post("/workouts", nil)
-		r.Get("/workouts", nil)
-		r.Get("/workouts/{id}", nil)
-		r.Delete("/workouts/{id}", nil)
-
 	})
 
 	return r

@@ -29,4 +29,7 @@ var (
 
 	//password_reser
 	ErrPasswordResetHashNotFount = errors.New("password reset hash not found")
+
+	//hrzones
+	ErrHRZonesNotFound = errors.New("hrzones not found")
 )

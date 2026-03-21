@@ -16,5 +16,5 @@ type Session struct {
 	RefreshHash string    `json:"refresh_hash"`
 	ExpiresAt   time.Time `json:"expires_at"`
 	Revoked     bool      `json:"revoked"`
-	CreatedAt   time.Time `json:"ceated_At"`
+	CreatedAt   time.Time `json:"ceated_at"`
 }

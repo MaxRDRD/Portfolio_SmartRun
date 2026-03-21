@@ -1,7 +1,9 @@
 package http
 
 import (
+	"SmartRun/internal/auth"
 	"SmartRun/internal/dto"
+	"SmartRun/internal/mapper"
 	"SmartRun/internal/usecase/service"
 	"SmartRun/pkg/my_errors"
 	"encoding/json"
@@ -10,7 +12,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/go-chi/chi"
+	"github.com/go-chi/chi/v5"
 )
 
 type WorkoutHandler struct {
@@ -29,9 +31,13 @@ func (h *WorkoutHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userId := r.Context().Value("user_id").(int)
+	userID, ok := auth.GetUserID(r.Context())
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
 
-	workout, err := h.service.Create(r.Context(), userId, req)
+	workout, err := h.service.Create(r.Context(), userID, req)
 	if err != nil {
 		if errors.Is(err, my_errors.ErrWorkoutAlreadyExists) {
 			http.Error(w, err.Error(), http.StatusConflict)
@@ -44,14 +50,28 @@ func (h *WorkoutHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusCreated)
 
-	json.NewEncoder(w).Encode(dto.WorkoutsResponse{
-		ID:           workout.ID,
-		Date:         workout.Date.String(),
-		TypeActivity: workout.TypeActivity,
-		Distance:     workout.Distance,
-		Duration:     workout.Duration,
-	})
+	json.NewEncoder(w).Encode(mapper.ToWorkoutsResponse(workout))
 }
+
+/*
+	ID              int64    `json:"id"`
+    Date            string   `json:"date"`
+    TypeActivity    string   `json:"type_activity"`
+    Distance        float64  `json:"distance"`
+    Duration        int      `json:"duration"`
+    Pace            float64  `json:"pace"` // или string "4:19"
+    AvgCadence      *int     `json:"avg_cadence"`
+    ElevationGain   *float64 `json:"elevation_gain"`
+    AvgHR           *int     `json:"avg_hr"`
+    MaxHR           *int     `json:"max_hr"`
+    Calories        *int     `json:"calories"`
+    VO2MaxEstimate  *float64 `json:"vo2max_estimate,omitempty"`
+    RecoveryTime    *int     `json:"recovery_time,omitempty"`
+    TrainingLoad    *float64 `json:"training_load,omitempty"`
+    PerceivedEffort int      `json:"perceived_effort,omitempty"`
+    Notes           string   `json:"notes,omitempty"`
+    Shoes           string   `json:"shoes,omitempty"`
+*/
 
 func (h *WorkoutHandler) Update(w http.ResponseWriter, r *http.Request) {
 	var req dto.UpdateRequest
@@ -61,10 +81,14 @@ func (h *WorkoutHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID := r.Context().Value("user_id").(int)
+	userID, ok := auth.GetUserID(r.Context())
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
 
 	idStr := chi.URLParam(r, "id")
-	id, _ := strconv.Atoi(idStr)
+	id, _ := strconv.ParseInt(idStr, 10, 64)
 
 	workout, err := h.service.Update(r.Context(), userID, id, req)
 	if err != nil {
@@ -76,11 +100,15 @@ func (h *WorkoutHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	json.NewEncoder(w).Encode(workout)
+	json.NewEncoder(w).Encode(mapper.ToWorkoutsResponse(workout))
 }
 
 func (h *WorkoutHandler) GetAll(w http.ResponseWriter, r *http.Request) {
-	userID := r.Context().Value("user_id").(int64)
+	userID, ok := auth.GetUserID(r.Context())
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
 
 	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
@@ -121,11 +149,67 @@ func (h *WorkoutHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 
 	workouts, err := h.service.GetAll(r.Context(), filter)
 	if err != nil {
-		if errors.Is(err, my_errors.ErrWorkoutNotFound) {
-			http.Error(w, err.Error(), http.StatusConflict)
-		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
 
-	json.NewEncoder(w).Encode(workouts)
+	responses := make([]dto.WorkoutsResponse, len(workouts))
+	for i, w := range workouts {
+		responses[i] = mapper.ToWorkoutsResponse(&w)
+	}
+	json.NewEncoder(w).Encode(responses)
+}
+
+func (h *WorkoutHandler) GetByID(w http.ResponseWriter, r *http.Request) {
+	userID, ok := auth.GetUserID(r.Context())
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	idStr := chi.URLParam(r, "id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+
+	workout, err := h.service.GetByID(r.Context(), id, userID)
+	if err != nil {
+		if errors.Is(err, my_errors.ErrWorkoutNotFound) {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	json.NewEncoder(w).Encode(mapper.ToWorkoutsResponse(workout))
+}
+
+func (h *WorkoutHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	userID, ok := auth.GetUserID(r.Context())
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	idStr := chi.URLParam(r, "id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+		return
+	}
+
+	err = h.service.Delete(r.Context(), id, userID)
+	if err != nil {
+		if errors.Is(err, my_errors.ErrWorkoutNotFound) {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }

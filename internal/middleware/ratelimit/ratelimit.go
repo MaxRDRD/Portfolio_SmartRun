@@ -1,6 +1,8 @@
 package ratelimit
 
 import (
+	"SmartRun/internal/auth"
+	"fmt"
 	"net/http"
 	"time"
 
@@ -48,11 +50,10 @@ func NewRateLimitMiddleware(cfg RateLimitConfig) func(http.Handler) http.Handler
 	return limiter.Handler
 }
 
-// Кастомный ключ по user_id (после авторизации)
+// KeyByUserID — ключ по user_id (после авторизации)
 func KeyByUserID(r *http.Request) (string, error) {
-	userID := r.Context().Value("user_id")
-	if userID != nil {
-		return "user:" + userID.(string), nil
+	if id, ok := auth.GetUserID(r.Context()); ok {
+		return fmt.Sprintf("user:%d", id), nil
 	}
 	return httprate.KeyByIP(r) // fallback на IP
 }

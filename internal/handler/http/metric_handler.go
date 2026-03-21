@@ -4,7 +4,6 @@ import (
 	"SmartRun/internal/dto"
 	"SmartRun/internal/usecase/service"
 	"SmartRun/pkg/my_errors"
-	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -20,7 +19,7 @@ func NewMetricHandler(service service.MetricService) *MetricHandler {
 }
 
 func (h *MetricHandler) GetMetrics(w http.ResponseWriter, r *http.Request) {
-	ctx := context.Background()
+	ctx := r.Context()
 
 	fromStr := r.URL.Query().Get("from")
 	toStr := r.URL.Query().Get("to")
@@ -44,10 +43,14 @@ func (h *MetricHandler) GetMetrics(w http.ResponseWriter, r *http.Request) {
 	}
 
 	metrics, err := h.service.GetMetrics(ctx, filter)
-	if errors.Is(err, my_errors.ErrMetricNotFound) {
-		http.Error(w, err.Error(), http.StatusConflict)
+	if err != nil {
+		if errors.Is(err, my_errors.ErrMetricNotFound) {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
-	http.Error(w, err.Error(), http.StatusInternalServerError)
 
 	json.NewEncoder(w).Encode(metrics)
 

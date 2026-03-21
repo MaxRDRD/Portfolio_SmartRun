@@ -22,48 +22,95 @@ func NewWorkoutRepository(db repository.DB) repository.WorkoutRepository {
 
 func (r *workoutRepository) Create(ctx context.Context, workout *model.Workouts) error {
 	sqlQuery := `
-        INSERT INTO workouts (type_activity, user_id, distance, date, duration, pace)
-	VALUES ($1, $2, $3, $4, $5, $6)
-	RETURNING id, created_at
+        INSERT INTO workouts (
+            user_id, date, distance, duration, pace, type_activity,
+            calories, avg_hr, max_hr, elevation_gain, avg_cadence, max_cadence,
+            notes, shoes, vo2max_estimate, aerobic_training_effect,
+            anaerobic_training_effect, training_load, recovery_time,
+            rpe, efficiency, primary_training_focus, elevation_loss
+        ) VALUES (
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
+            $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23
+        )
+        RETURNING id, created_at
     `
 	return r.db.QueryRow(ctx, sqlQuery,
-		workout.TypeActivity,
 		workout.UserID,
-		workout.Distance,
 		workout.Date,
+		workout.Distance,
 		workout.Duration,
 		workout.Pace,
+		workout.TypeActivity,
+		workout.Calories,
+		workout.AvgHR,
+		workout.MaxHR,
+		workout.ElevationGain,
+		workout.AvgCadence,
+		workout.MaxCadence,
+		workout.Notes,
+		workout.Shoes,
+		workout.VO2MaxEstimate,
+		workout.AerobicTrainingEffect,
+		workout.AnaerobicTrainingEffect,
+		workout.TrainingLoad,
+		workout.RecoveryTime,
+		workout.RPE,
+		workout.Efficiency,
+		workout.PrimaryTrainingFocus,
+		workout.ElevationLoss,
 	).Scan(&workout.ID, &workout.CreatedAt)
 }
 
-func (r *workoutRepository) GetByID(ctx context.Context, id int, userID int) (*model.Workouts, error) {
+func (r *workoutRepository) GetByID(ctx context.Context, id int64, userID int64) (*model.Workouts, error) {
 	sqlQuery := `
-	SELECT date, distance, duration, created_at, type_activity, pace
-	FROM workouts
-	WHERE id = $1 AND user_id = $2;
+	SELECT date, distance, duration, pace, type_activity, calories,
+	       avg_hr, max_hr, elevation_gain, avg_cadence, max_cadence,
+	       notes, shoes, vo2max_estimate, aerobic_training_effect, anaerobic_training_effect,
+	       training_load, recovery_time, rpe, efficiency, primary_training_focus, elevation_loss
+	FROM workouts WHERE id = $1 AND user_id = $2
 	`
 	var workout model.Workouts
 	err := r.db.QueryRow(ctx, sqlQuery, id, userID).Scan(
 		&workout.Date,
 		&workout.Distance,
 		&workout.Duration,
-		&workout.CreatedAt,
-		&workout.TypeActivity,
 		&workout.Pace,
+		&workout.TypeActivity,
+		&workout.Calories,
+		&workout.AvgHR,
+		&workout.MaxHR,
+		&workout.ElevationGain,
+		&workout.AvgCadence,
+		&workout.MaxCadence,
+		&workout.Notes,
+		&workout.Shoes,
+		&workout.VO2MaxEstimate,
+		&workout.AerobicTrainingEffect,
+		&workout.AnaerobicTrainingEffect,
+		&workout.TrainingLoad,
+		&workout.RecoveryTime,
+		&workout.RPE,
+		&workout.Efficiency,
+		&workout.PrimaryTrainingFocus,
+		&workout.ElevationLoss,
 	)
 
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, my_errors.ErrWorkoutNotFound
 	}
+	workout.ID = id
+	workout.UserID = userID
 
 	return &workout, err
 }
 
 func (r *workoutRepository) GetAllByUserID(ctx context.Context, filter dto.WorkoutFilter) ([]model.Workouts, error) {
 	query := `
-		SELECT id, date, distance, duration, created_at, type_activity, pace
-		FROM workouts
-		WHERE user_id = $1
+		SELECT id, date, distance, duration, pace, type_activity, calories,
+		       avg_hr, max_hr, elevation_gain, avg_cadence, max_cadence,
+		       notes, shoes, vo2max_estimate, aerobic_training_effect, anaerobic_training_effect,
+		       training_load, recovery_time, rpe, efficiency, primary_training_focus, elevation_loss
+		FROM workouts WHERE user_id = $1
 	`
 
 	args := []interface{}{filter.UserID}
@@ -87,9 +134,13 @@ func (r *workoutRepository) GetAllByUserID(ctx context.Context, filter dto.Worko
 		argPos++
 	}
 
-	query += fmt.Sprintf(" ORDER BY date DESC LIMIT $%d OFFSET $%d", argPos, argPos+1)
+	limit, offset := filter.Limit, filter.Offset
+	if limit <= 0 {
+		limit = 100
+	}
 
-	args = append(args, filter.Limit, filter.Offset)
+	query += fmt.Sprintf(" ORDER BY date DESC LIMIT $%d OFFSET $%d", argPos, argPos+1)
+	args = append(args, limit, offset)
 
 	rows, err := r.db.Query(ctx, query, args...)
 	if err != nil {
@@ -106,9 +157,25 @@ func (r *workoutRepository) GetAllByUserID(ctx context.Context, filter dto.Worko
 			&workout.Date,
 			&workout.Distance,
 			&workout.Duration,
-			&workout.CreatedAt,
-			&workout.TypeActivity,
 			&workout.Pace,
+			&workout.TypeActivity,
+			&workout.Calories,
+			&workout.AvgHR,
+			&workout.MaxHR,
+			&workout.ElevationGain,
+			&workout.AvgCadence,
+			&workout.MaxCadence,
+			&workout.Notes,
+			&workout.Shoes,
+			&workout.VO2MaxEstimate,
+			&workout.AerobicTrainingEffect,
+			&workout.AnaerobicTrainingEffect,
+			&workout.TrainingLoad,
+			&workout.RecoveryTime,
+			&workout.RPE,
+			&workout.Efficiency,
+			&workout.PrimaryTrainingFocus,
+			&workout.ElevationLoss,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("scan workout: %w", err)
@@ -123,7 +190,7 @@ func (r *workoutRepository) GetAllByUserID(ctx context.Context, filter dto.Worko
 	return workouts, nil
 }
 
-func (r *workoutRepository) DeleteWorkout(ctx context.Context, id int, userID int) error {
+func (r *workoutRepository) DeleteWorkout(ctx context.Context, id int64, userID int64) error {
 	sqlQuery := `
         DELETE FROM workouts
 		WHERE id = $1 AND user_id = $2;
@@ -142,15 +209,39 @@ func (r *workoutRepository) DeleteWorkout(ctx context.Context, id int, userID in
 
 func (r *workoutRepository) Update(ctx context.Context, workout *model.Workouts) error {
 	sqlQuery := `
-        UPDATE workouts
-		SET distance=$1, duration=$2, type_activity=$3, date=$4
-		WHERE id=$5 AND user_id=$6
+        UPDATE workouts SET
+        distance = $1, duration = $2, pace = $3, type_activity = $4, date = $5,
+        calories = $6, avg_hr = $7, max_hr = $8, elevation_gain = $9,
+        avg_cadence = $10, max_cadence = $11, notes = $12, shoes = $13,
+        aerobic_training_effect = $14, anaerobic_training_effect = $15,
+        training_load = $16, recovery_time = $17, rpe = $18,
+        efficiency = $19, primary_training_focus = $20,
+        vo2max_estimate = $21, elevation_loss = $22
+        WHERE id = $23 AND user_id = $24
     `
 	tag, err := r.db.Exec(ctx, sqlQuery,
 		workout.Distance,
 		workout.Duration,
+		workout.Pace,
 		workout.TypeActivity,
 		workout.Date,
+		workout.Calories,
+		workout.AvgHR,
+		workout.MaxHR,
+		workout.ElevationGain,
+		workout.AvgCadence,
+		workout.MaxCadence,
+		workout.Notes,
+		workout.Shoes,
+		workout.AerobicTrainingEffect,
+		workout.AnaerobicTrainingEffect,
+		workout.TrainingLoad,
+		workout.RecoveryTime,
+		workout.RPE,
+		workout.Efficiency,
+		workout.PrimaryTrainingFocus,
+		workout.VO2MaxEstimate,
+		workout.ElevationLoss,
 		workout.ID,
 		workout.UserID,
 	)
