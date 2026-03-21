@@ -4,11 +4,13 @@ import (
 	"SmartRun/internal/calculate"
 	"SmartRun/internal/dto"
 	"SmartRun/internal/model"
+	"SmartRun/internal/ports/outgoing/importer"
 	"SmartRun/internal/repository"
 	validupdate "SmartRun/internal/validate"
 	"SmartRun/pkg/my_errors"
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/go-playground/validator"
@@ -21,18 +23,21 @@ type WorkoutService interface {
 	Delete(ctx context.Context, id, userID int64) error
 	Update(ctx context.Context, userID, id int64, req dto.UpdateRequest) (*model.Workouts, error)
 	GetAll(ctx context.Context, filter dto.WorkoutFilter) ([]model.Workouts, error)
+	UploadFit(ctx context.Context, userID int64, fileData []byte) (*model.Workouts, error)
 }
 
 type workoutService struct {
 	repo        repository.WorkoutRepository
 	userRepo    repository.UserRepository
 	hrZonesRepo repository.HRZonesRepository
+	parser      importer.FitParser
 	validate    *validator.Validate
 }
 
 func NewWorkoutService(repo repository.WorkoutRepository,
 	userRepo repository.UserRepository,
 	hrZonesRepo repository.HRZonesRepository,
+	parser importer.FitParser,
 	validate *validator.Validate) WorkoutService {
 
 	/*Регистрация нового формата
@@ -46,6 +51,7 @@ func NewWorkoutService(repo repository.WorkoutRepository,
 		repo:        repo,
 		userRepo:    userRepo,
 		hrZonesRepo: hrZonesRepo,
+		parser:      parser,
 		validate:    validate,
 	}
 }
@@ -64,22 +70,20 @@ func (s *workoutService) Create(ctx context.Context, userID int64, req dto.Creat
 		return nil, my_errors.ErrInvalidData
 	}
 
-	pace := float64(req.Duration) / req.Distance
 	workout := &model.Workouts{
-		UserID:       userID,
-		Date:         parsedDate,
-		Distance:     req.Distance,
-		Duration:     req.Duration,
-		TypeActivity: req.TypeActivity,
-		Pace:         pace,
-		Calories:     req.Calories,
-		AvgHR:        req.AvgHR,
-		MaxHR:        req.MaxHR,
-		AvgCadence:   req.AvgCadence,
-		MaxCadence:   req.MaxCadence,
+		UserID:        userID,
+		Date:          parsedDate,
+		Distance:      req.Distance,
+		Duration:      req.Duration,
+		TypeActivity:  req.TypeActivity,
+		Calories:      req.Calories,
+		AvgHR:         req.AvgHR,
+		MaxHR:         req.MaxHR,
+		AvgCadence:    req.AvgCadence,
+		MaxCadence:    req.MaxCadence,
 		ElevationGain: req.ElevationGain,
 		ElevationLoss: req.ElevationLoss,
-		RPE:          req.RPE,
+		RPE:           req.RPE,
 	}
 	if req.Notes != nil {
 		workout.Notes = *req.Notes
@@ -87,6 +91,13 @@ func (s *workoutService) Create(ctx context.Context, userID int64, req dto.Creat
 	if req.Shoes != nil {
 		workout.Shoes = *req.Shoes
 	}
+
+	user, err := s.userRepo.GetUserByID(ctx, userID)
+	if err != nil {
+		return nil, my_errors.ErrUserNotFound
+	}
+
+	calculate.CalculateDerivedMetrics(workout, user)
 
 	err = s.repo.Create(ctx, workout)
 	if err != nil {
@@ -175,4 +186,41 @@ func (s *workoutService) Update(ctx context.Context, userID, id int64, req dto.U
 
 func (s *workoutService) GetAll(ctx context.Context, filter dto.WorkoutFilter) ([]model.Workouts, error) {
 	return s.repo.GetAllByUserID(ctx, filter)
+}
+
+func (s *workoutService) UploadFit(ctx context.Context, userID int64, fileData []byte) (*model.Workouts, error) {
+	activityData, err := s.parser.Parse(ctx, fileData)
+	if err != nil {
+		return nil, fmt.Errorf("parse FIT: %w", err)
+	}
+
+	workout := &model.Workouts{
+		UserID:                  userID,
+		Date:                    activityData.StartTime,
+		Distance:                activityData.Distance,
+		Duration:                activityData.Duration,
+		TypeActivity:            activityData.TypeActivity,
+		Calories:                activityData.Calories,
+		AvgHR:                   activityData.AvgHR,
+		MaxHR:                   activityData.MaxHR,
+		AvgCadence:              activityData.AvgCadence,
+		ElevationGain:           activityData.ElevationGain,
+		ElevationLoss:           activityData.ElevationLoss,
+		AerobicTrainingEffect:   activityData.AerobicTrainingEffect,
+		AnaerobicTrainingEffect: activityData.AnaerobicTrainingEffect,
+	}
+
+	user, err := s.userRepo.GetUserByID(ctx, userID)
+	if err != nil {
+		return nil, my_errors.ErrUserNotFound
+	}
+
+	calculate.CalculateDerivedMetrics(workout, user)
+
+	err = s.repo.Create(ctx, workout)
+	if err != nil {
+		return nil, err
+	}
+
+	return workout, nil
 }

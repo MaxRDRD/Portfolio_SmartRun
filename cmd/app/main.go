@@ -3,6 +3,7 @@ package main
 import (
 	"SmartRun/cmd/server"
 	db "SmartRun/internal/DB"
+	"SmartRun/internal/adapter/importer/fit"
 	"SmartRun/internal/config"
 	"SmartRun/internal/usecase/service"
 	"time"
@@ -51,8 +52,9 @@ func main() {
 
 	workoutRepo := repopostgres.NewWorkoutRepository(pool)
 	hrZonesRepo := repopostgres.NewHRZonesRepository(pool)
+	parser := fit.NewMuktihariFitParser()
 	validate := validator.New()
-	workoutService := service.NewWorkoutService(workoutRepo, userRepo, hrZonesRepo, validate)
+	workoutService := service.NewWorkoutService(workoutRepo, userRepo, hrZonesRepo, parser, validate)
 	workoutHandler := myhttp.NewWorkoutHandler(workoutService)
 
 	s, err := gocron.NewScheduler()

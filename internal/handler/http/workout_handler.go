@@ -4,12 +4,15 @@ import (
 	"SmartRun/internal/auth"
 	"SmartRun/internal/dto"
 	"SmartRun/internal/mapper"
+	"SmartRun/internal/model"
 	"SmartRun/internal/usecase/service"
 	"SmartRun/pkg/my_errors"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -24,20 +27,40 @@ func NewWorkoutHandler(service service.WorkoutService) *WorkoutHandler {
 }
 
 func (h *WorkoutHandler) Create(w http.ResponseWriter, r *http.Request) {
-	var req dto.CreateRequest
-
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "invalid body", http.StatusBadRequest)
-		return
-	}
-
 	userID, ok := auth.GetUserID(r.Context())
 	if !ok {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
 
-	workout, err := h.service.Create(r.Context(), userID, req)
+	contentType := r.Header.Get("Content-Type")
+
+	var workout *model.Workouts
+	var err error
+
+	if strings.HasPrefix(contentType, "application/json") {
+		var req dto.CreateRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "invalid JSON body", http.StatusBadRequest)
+			return
+		}
+		workout, err = h.service.Create(r.Context(), userID, req)
+
+	} else if strings.HasPrefix(contentType, "application/octet-stream") ||
+		strings.HasPrefix(contentType, "application/vnd.garmin.fit") {
+		// Загрузка FIT файла как бинарного потока
+		data, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, "failed to read file", http.StatusBadRequest)
+			return
+		}
+		workout, err = h.service.UploadFit(r.Context(), userID, data)
+
+	} else {
+		http.Error(w, "unsupported Content-Type: "+contentType, http.StatusUnsupportedMediaType)
+		return
+	}
+
 	if err != nil {
 		if errors.Is(err, my_errors.ErrWorkoutAlreadyExists) {
 			http.Error(w, err.Error(), http.StatusConflict)
