@@ -12,4 +12,5 @@ type WorkoutRepository interface {
 	GetAllByUserID(ctx context.Context, filter dto.WorkoutFilter) ([]model.Workouts, error)
 	DeleteWorkout(ctx context.Context, id int64, userID int64) error
 	Update(ctx context.Context, workout *model.Workouts) error
+	GetMonthlyHistory(ctx context.Context, userID int64, monthsLimit, monthsOffset int) ([]model.WorkoutMonthHistory, error)
 }

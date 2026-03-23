@@ -1,7 +1,6 @@
 package importer
 
 import (
-	"SmartRun/internal/dto"
 	"context"
 	"time"
 )
@@ -38,16 +37,21 @@ type ActivityData struct {
 
 	// Дополнительные метрики (если есть в файле)
 	TrainingLoad            *float64 `json:"training_load,omitempty"` // если Coros/Garmin записал
+	TrainingStressScore     *float64 `json:"training_stress_score,omitempty"`
+	IntensityFactor         *float64 `json:"intensity_factor,omitempty"`
 	RecoveryTime            *int     `json:"recovery_time,omitempty"` // минуты
 	VO2MaxEstimate          *float64 `json:"vo2max_estimate,omitempty"`
 	AerobicTrainingEffect   *float64 `json:"aerobic_training_effect,omitempty"`
 	AnaerobicTrainingEffect *float64 `json:"anaerobic_training_effect,omitempty"`
 	RPE                     *int     `json:"rpe,omitempty"` // если записано
+	AvgStress               *int     `json:"avg_stress,omitempty"`
+	SdrrHrv                *int     `json:"sdrr_hrv,omitempty"`
+	RmssdHrv               *int     `json:"rmssd_hrv,omitempty"`
 
 	// Опционально: заметки / обувь (редко в FIT, но можно из developer fields)
 	Notes *string `json:"notes,omitempty"`
 	Shoes *string `json:"shoes,omitempty"`
 
-	// Для будущего расширения (если захочешь хранить зоны или сплиты)
-	HRZones *dto.HRZonesRequest `json:"hr_zones,omitempty"`
+	// Raw time in HR zones in seconds (zone index order from FIT message).
+	TimeInHrZone []int `json:"time_in_hr_zone_seconds,omitempty"`
 }

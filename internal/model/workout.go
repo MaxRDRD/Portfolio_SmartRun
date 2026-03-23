@@ -26,8 +26,14 @@ type Workouts struct {
 	PrimaryTrainingFocus string // "Aerobic", "Threshold", "VO2max", "Anaerobic", "Anaerobic Power"
 
 	TrainingLoad *float64
+	TrainingStressScore *float64
+	IntensityFactor *float64
 	RecoveryTime *int
 	RPE          *int // субъективная нагрузка 1–10
+	AvgStress    *int
+	SdrrHrv      *int
+	RmssdHrv     *int
+	TimeInHrZone []int
 	Notes        string
 	Shoes        string
 	Efficiency   *float64
@@ -53,4 +59,23 @@ type WorkoutHRZones struct {
 	Zone3Seconds int // 70-80%
 	Zone4Seconds int // 80-90%
 	Zone5Seconds int // 90-100%
+}
+
+type WorkoutPreview struct {
+	ID           int64
+	Date         time.Time
+	Distance     float64
+	Duration     int
+	Pace         float64
+	TypeActivity string
+	Place        string
+	PreviewImage string
+}
+
+type WorkoutMonthHistory struct {
+	Month         time.Time
+	WorkoutsCount int
+	TotalDistance float64
+	TotalDuration int
+	Workouts      []WorkoutPreview
 }

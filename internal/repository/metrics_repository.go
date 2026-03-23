@@ -7,5 +7,5 @@ import (
 )
 
 type MetricsRepository interface {
-	GetMetrics(ctx context.Context, filter dto.MetricsFilter) ([]model.Metrics, error)
+	GetMetrics(ctx context.Context, filter dto.MetricsFilter) (*model.Metrics, error)
 }

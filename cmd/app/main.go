@@ -28,7 +28,7 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-
+	validator := validator.New()
 	userRepo := repopostgres.NewUserRepository(pool)
 	sessionRepo := repopostgres.NewSessionRepository(pool)
 	totpRepo := repopostgres.NewTOTPRepository(pool)
@@ -47,20 +47,18 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	userService := service.NewUserService(userRepo, sessionRepo, totpRepo, passwResetRepo, emailService, cfg, txManager)
+	userService := service.NewUserService(userRepo, sessionRepo, totpRepo, passwResetRepo, emailService, cfg, txManager, validator)
 	userHandler := myhttp.NewUserHandler(userService)
 
 	workoutRepo := repopostgres.NewWorkoutRepository(pool)
 	hrZonesRepo := repopostgres.NewHRZonesRepository(pool)
 	parser := fit.NewMuktihariFitParser()
-	validate := validator.New()
-	workoutService := service.NewWorkoutService(workoutRepo, userRepo, hrZonesRepo, parser, validate)
+	workoutService := service.NewWorkoutService(workoutRepo, userRepo, hrZonesRepo, parser, validator, txManager)
 	workoutHandler := myhttp.NewWorkoutHandler(workoutService)
 
 	s, err := gocron.NewScheduler()
 	if err != nil {
 		log.Fatalf("cannot create scheduler: %v", err)
-		// или: return err (если main возвращает error в некоторых шаблонах)
 	}
 	s.NewJob(
 		gocron.DailyJob(1, gocron.NewAtTimes(gocron.NewAtTime(3, 0, 0))), // Каждый день в 3:00
@@ -73,16 +71,45 @@ func main() {
 	)
 	s.Start()
 
-	server := server.NewServer(userHandler, workoutHandler)
+	// Создаём HTTP сервер
+	handler := server.NewServer(userHandler, workoutHandler)
+	httpServer := &http.Server{
+		Addr:         ":8080",
+		Handler:      handler,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 15 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
 
-	log.Fatal(http.ListenAndServe(":8080", server))
+	// Запускаем сервер в горутине
+	go func() {
+		log.Printf("starting server on %s", httpServer.Addr)
+		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("server listen error: %v", err)
+		}
+	}()
 
-	// graceful shutdown
+	// Ждём сигнала завершения (Ctrl+C или SIGTERM)
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	<-quit
+	sig := <-quit
+	log.Printf("received signal: %v, initiating graceful shutdown...", sig)
+
+	// Graceful shutdown с таймаутом 30 сек
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	if err := httpServer.Shutdown(shutdownCtx); err != nil {
+		log.Printf("HTTP server shutdown error: %v", err)
+	} else {
+		log.Println("HTTP server shutdown successfully")
+	}
 
 	if err := s.Shutdown(); err != nil {
 		log.Printf("scheduler shutdown error: %v", err)
+	} else {
+		log.Println("scheduler shut down successfully")
 	}
+
+	log.Println("application stopped")
 }

@@ -13,7 +13,7 @@ type MetricsResponse struct {
 }
 
 type MetricsFilter struct {
-	UserID int        `json:"user_id"`
+	UserID int64      `json:"user_id"`
 	From   *time.Time `json:"from"`
 	To     *time.Time `json:"to"`
 }

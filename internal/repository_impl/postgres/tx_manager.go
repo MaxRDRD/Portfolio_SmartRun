@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"errors"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -23,7 +24,7 @@ func (t *txManager) Begin(ctx context.Context) (pgx.Tx, error) {
 
 type txKey struct{}
 
-func (t *txManager) WithTransaction(ctx context.Context, fn func(context.Context) error) error {
+func (t *txManager) WithTransaction(ctx context.Context, fn func(context.Context) error) (err error) {
 	tx, err := t.db.Begin(ctx)
 	if err != nil {
 		return err
@@ -35,15 +36,23 @@ func (t *txManager) WithTransaction(ctx context.Context, fn func(context.Context
 			_ = tx.Rollback(ctx)
 			panic(p)
 		}
+		var rbErr error
 		if err != nil {
-			_ = tx.Rollback(ctx)
+			rbErr = tx.Rollback(ctx)
 		} else {
 			err = tx.Commit(ctx) // присваиваем err, чтобы внешний вызов видел ошибку Commit
 		}
+		if rbErr != nil && !errors.Is(rbErr, pgx.ErrTxClosed) {
+			// log.Warn("transaction finalization failed", "error", rbErr)
+		}
+
+		// Самое важное: НЕ перезаписываем err здесь!
+		// err остаётся тем, что вернула fn (или panic)
 	}()
 
 	ctx = context.WithValue(ctx, txKey{}, tx)
-	return fn(ctx)
+	err = fn(ctx)
+	return err
 }
 
 // Вспомогательная функция для репозиториев

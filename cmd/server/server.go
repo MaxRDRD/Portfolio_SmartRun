@@ -63,14 +63,17 @@ func NewServer(userHandler *myhttp.UserHandler, workoutHandler *myhttp.WorkoutHa
 		r.With(authLimiter).Post("/password/reset/request", userHandler.RequestPasswordReset)
 		r.With(authLimiter).Post("/password/reset/confirm", userHandler.ResetPassword)
 
+		// Verify2FA НЕ требует JWT - она используется в ПРОЦЕССЕ аутентификации
+		r.Post("/verify-2fa", userHandler.Verify2FA)
+
 		r.Group(func(r chi.Router) {
 			r.Use(auth.JWT)
 			r.With(userLimiter).Get("/me", userHandler.Me)
 			r.Post("/enable-2fa", userHandler.Enable2FA)
-			r.Post("/verify-2fa", userHandler.Verify2FA)
 
 			r.With(userLimiter).Post("/workouts", workoutHandler.Create)
 			r.With(userLimiter).Get("/workouts", workoutHandler.GetAll)
+			r.With(userLimiter).Get("/workouts/history", workoutHandler.GetHistoryByMonth)
 			r.With(userLimiter).Get("/workouts/{id}", workoutHandler.GetByID)
 			r.With(userLimiter).Put("/workouts/{id}", workoutHandler.Update)
 			r.With(userLimiter).Delete("/workouts/{id}", workoutHandler.Delete)

@@ -12,7 +12,11 @@ type User struct {
 	CreatedAt   time.Time
 	TOTPEnabled bool
 	WeightKg    float64
+	HeightCm    float64
 	RestingHR   int
 	MaxHR       int
 	Gender      string
+	Age          int
+	WeeklyRuns   int
+	ThresholdPace float64
 }

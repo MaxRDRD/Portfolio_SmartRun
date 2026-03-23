@@ -22,6 +22,11 @@ func ToWorkoutsResponse(w *model.Workouts) dto.WorkoutsResponse {
 		VO2MaxEstimate:          w.VO2MaxEstimate,
 		RecoveryTime:            w.RecoveryTime,
 		TrainingLoad:            w.TrainingLoad,
+		TrainingStressScore:     w.TrainingStressScore,
+		IntensityFactor:         w.IntensityFactor,
+		AvgStress:               w.AvgStress,
+		SdrrHrv:                 w.SdrrHrv,
+		RmssdHrv:                w.RmssdHrv,
 		PerceivedEffort:         w.RPE, // если поле RPE int в модели
 		Notes:                   w.Notes,
 		Shoes:                   w.Shoes,
@@ -29,4 +34,36 @@ func ToWorkoutsResponse(w *model.Workouts) dto.WorkoutsResponse {
 		AerobicTrainingEffect:   w.AerobicTrainingEffect,
 		AnaerobicTrainingEffect: w.AnaerobicTrainingEffect,
 	}
+}
+
+func ToWorkoutHistoryResponse(months []model.WorkoutMonthHistory) dto.WorkoutHistoryResponse {
+	response := dto.WorkoutHistoryResponse{
+		Months: make([]dto.WorkoutMonthHistoryResponse, len(months)),
+	}
+
+	for i, month := range months {
+		previews := make([]dto.WorkoutHistoryPreviewResponse, len(month.Workouts))
+		for j, workout := range month.Workouts {
+			previews[j] = dto.WorkoutHistoryPreviewResponse{
+				ID:           workout.ID,
+				Date:         workout.Date.Format("2006-01-02"),
+				Distance:     workout.Distance,
+				Duration:     workout.Duration,
+				Pace:         workout.Pace,
+				TypeActivity: workout.TypeActivity,
+				Place:        workout.Place,
+				PreviewImage: workout.PreviewImage,
+			}
+		}
+
+		response.Months[i] = dto.WorkoutMonthHistoryResponse{
+			Month:         month.Month.Format("2006-01"),
+			WorkoutsCount: month.WorkoutsCount,
+			TotalDistance: month.TotalDistance,
+			TotalDuration: month.TotalDuration,
+			Workouts:      previews,
+		}
+	}
+
+	return response
 }

@@ -8,6 +8,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -20,21 +22,32 @@ func NewWorkoutRepository(db repository.DB) repository.WorkoutRepository {
 	return &workoutRepository{db: db}
 }
 
+func (r *workoutRepository) getDB(ctx context.Context) repository.DB {
+	if tx, ok := getTx(ctx); ok {
+		return tx
+	}
+	return r.db // pool
+}
+
 func (r *workoutRepository) Create(ctx context.Context, workout *model.Workouts) error {
+	db := r.getDB(ctx)
+
 	sqlQuery := `
         INSERT INTO workouts (
             user_id, date, distance, duration, pace, type_activity,
             calories, avg_hr, max_hr, elevation_gain, avg_cadence, max_cadence,
             notes, shoes, vo2max_estimate, aerobic_training_effect,
-            anaerobic_training_effect, training_load, recovery_time,
-            rpe, efficiency, primary_training_focus, elevation_loss
+			anaerobic_training_effect, training_load, training_stress_score,
+			intensity_factor, avg_stress, sdrr_hrv, rmssd_hrv, recovery_time,
+			rpe, efficiency, primary_training_focus, elevation_loss
         ) VALUES (
             $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
-            $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23
+			$13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24,
+			$25, $26, $27
         )
         RETURNING id, created_at
     `
-	return r.db.QueryRow(ctx, sqlQuery,
+	return db.QueryRow(ctx, sqlQuery,
 		workout.UserID,
 		workout.Date,
 		workout.Distance,
@@ -53,6 +66,11 @@ func (r *workoutRepository) Create(ctx context.Context, workout *model.Workouts)
 		workout.AerobicTrainingEffect,
 		workout.AnaerobicTrainingEffect,
 		workout.TrainingLoad,
+		workout.TrainingStressScore,
+		workout.IntensityFactor,
+		workout.AvgStress,
+		workout.SdrrHrv,
+		workout.RmssdHrv,
 		workout.RecoveryTime,
 		workout.RPE,
 		workout.Efficiency,
@@ -62,15 +80,18 @@ func (r *workoutRepository) Create(ctx context.Context, workout *model.Workouts)
 }
 
 func (r *workoutRepository) GetByID(ctx context.Context, id int64, userID int64) (*model.Workouts, error) {
+	db := r.getDB(ctx)
+
 	sqlQuery := `
 	SELECT date, distance, duration, pace, type_activity, calories,
 	       avg_hr, max_hr, elevation_gain, avg_cadence, max_cadence,
 	       notes, shoes, vo2max_estimate, aerobic_training_effect, anaerobic_training_effect,
-	       training_load, recovery_time, rpe, efficiency, primary_training_focus, elevation_loss
+	       training_load, training_stress_score, intensity_factor, avg_stress, sdrr_hrv, rmssd_hrv,
+	       recovery_time, rpe, efficiency, primary_training_focus, elevation_loss
 	FROM workouts WHERE id = $1 AND user_id = $2
 	`
 	var workout model.Workouts
-	err := r.db.QueryRow(ctx, sqlQuery, id, userID).Scan(
+	err := db.QueryRow(ctx, sqlQuery, id, userID).Scan(
 		&workout.Date,
 		&workout.Distance,
 		&workout.Duration,
@@ -88,6 +109,11 @@ func (r *workoutRepository) GetByID(ctx context.Context, id int64, userID int64)
 		&workout.AerobicTrainingEffect,
 		&workout.AnaerobicTrainingEffect,
 		&workout.TrainingLoad,
+		&workout.TrainingStressScore,
+		&workout.IntensityFactor,
+		&workout.AvgStress,
+		&workout.SdrrHrv,
+		&workout.RmssdHrv,
 		&workout.RecoveryTime,
 		&workout.RPE,
 		&workout.Efficiency,
@@ -105,11 +131,14 @@ func (r *workoutRepository) GetByID(ctx context.Context, id int64, userID int64)
 }
 
 func (r *workoutRepository) GetAllByUserID(ctx context.Context, filter dto.WorkoutFilter) ([]model.Workouts, error) {
+	db := r.getDB(ctx)
+
 	query := `
 		SELECT id, date, distance, duration, pace, type_activity, calories,
 		       avg_hr, max_hr, elevation_gain, avg_cadence, max_cadence,
 		       notes, shoes, vo2max_estimate, aerobic_training_effect, anaerobic_training_effect,
-		       training_load, recovery_time, rpe, efficiency, primary_training_focus, elevation_loss
+		       training_load, training_stress_score, intensity_factor, avg_stress, sdrr_hrv, rmssd_hrv,
+		       recovery_time, rpe, efficiency, primary_training_focus, elevation_loss
 		FROM workouts WHERE user_id = $1
 	`
 
@@ -142,7 +171,7 @@ func (r *workoutRepository) GetAllByUserID(ctx context.Context, filter dto.Worko
 	query += fmt.Sprintf(" ORDER BY date DESC LIMIT $%d OFFSET $%d", argPos, argPos+1)
 	args = append(args, limit, offset)
 
-	rows, err := r.db.Query(ctx, query, args...)
+	rows, err := db.Query(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("query all workouts: %w", err)
 	}
@@ -171,6 +200,11 @@ func (r *workoutRepository) GetAllByUserID(ctx context.Context, filter dto.Worko
 			&workout.AerobicTrainingEffect,
 			&workout.AnaerobicTrainingEffect,
 			&workout.TrainingLoad,
+			&workout.TrainingStressScore,
+			&workout.IntensityFactor,
+			&workout.AvgStress,
+			&workout.SdrrHrv,
+			&workout.RmssdHrv,
 			&workout.RecoveryTime,
 			&workout.RPE,
 			&workout.Efficiency,
@@ -191,11 +225,13 @@ func (r *workoutRepository) GetAllByUserID(ctx context.Context, filter dto.Worko
 }
 
 func (r *workoutRepository) DeleteWorkout(ctx context.Context, id int64, userID int64) error {
+	db := r.getDB(ctx)
+
 	sqlQuery := `
         DELETE FROM workouts
 		WHERE id = $1 AND user_id = $2;
     `
-	tag, err := r.db.Exec(ctx, sqlQuery, id, userID)
+	tag, err := db.Exec(ctx, sqlQuery, id, userID)
 	if err != nil {
 		return fmt.Errorf("failed to delete workout: %w", err)
 	}
@@ -208,18 +244,22 @@ func (r *workoutRepository) DeleteWorkout(ctx context.Context, id int64, userID 
 }
 
 func (r *workoutRepository) Update(ctx context.Context, workout *model.Workouts) error {
+	db := r.getDB(ctx)
+
 	sqlQuery := `
         UPDATE workouts SET
         distance = $1, duration = $2, pace = $3, type_activity = $4, date = $5,
         calories = $6, avg_hr = $7, max_hr = $8, elevation_gain = $9,
         avg_cadence = $10, max_cadence = $11, notes = $12, shoes = $13,
         aerobic_training_effect = $14, anaerobic_training_effect = $15,
-        training_load = $16, recovery_time = $17, rpe = $18,
-        efficiency = $19, primary_training_focus = $20,
-        vo2max_estimate = $21, elevation_loss = $22
-        WHERE id = $23 AND user_id = $24
+		training_load = $16, training_stress_score = $17,
+		intensity_factor = $18, avg_stress = $19, sdrr_hrv = $20, rmssd_hrv = $21,
+		recovery_time = $22, rpe = $23,
+		efficiency = $24, primary_training_focus = $25,
+		vo2max_estimate = $26, elevation_loss = $27
+		WHERE id = $28 AND user_id = $29
     `
-	tag, err := r.db.Exec(ctx, sqlQuery,
+	tag, err := db.Exec(ctx, sqlQuery,
 		workout.Distance,
 		workout.Duration,
 		workout.Pace,
@@ -236,6 +276,11 @@ func (r *workoutRepository) Update(ctx context.Context, workout *model.Workouts)
 		workout.AerobicTrainingEffect,
 		workout.AnaerobicTrainingEffect,
 		workout.TrainingLoad,
+		workout.TrainingStressScore,
+		workout.IntensityFactor,
+		workout.AvgStress,
+		workout.SdrrHrv,
+		workout.RmssdHrv,
 		workout.RecoveryTime,
 		workout.RPE,
 		workout.Efficiency,
@@ -246,7 +291,7 @@ func (r *workoutRepository) Update(ctx context.Context, workout *model.Workouts)
 		workout.UserID,
 	)
 	if err != nil {
-		return fmt.Errorf("failed to update workout: %w", err)
+		return my_errors.ErrWorkoutUpdate
 	}
 
 	if tag.RowsAffected() == 0 {
@@ -254,4 +299,132 @@ func (r *workoutRepository) Update(ctx context.Context, workout *model.Workouts)
 	}
 
 	return nil
+}
+
+func (r *workoutRepository) GetMonthlyHistory(ctx context.Context, userID int64, monthsLimit, monthsOffset int) ([]model.WorkoutMonthHistory, error) {
+	db := r.getDB(ctx)
+
+	if monthsLimit <= 0 {
+		monthsLimit = 3
+	}
+	if monthsOffset < 0 {
+		monthsOffset = 0
+	}
+
+	monthQuery := `
+		SELECT
+			date_trunc('month', date)::date AS month_start,
+			COUNT(*) AS workouts_count,
+			COALESCE(SUM(distance), 0) AS total_distance,
+			COALESCE(SUM(duration), 0) AS total_duration
+		FROM workouts
+		WHERE user_id = $1
+		GROUP BY 1
+		ORDER BY month_start DESC
+		LIMIT $2 OFFSET $3
+	`
+
+	monthRows, err := db.Query(ctx, monthQuery, userID, monthsLimit, monthsOffset)
+	if err != nil {
+		return nil, my_errors.ErrQueryWorkoutHistory
+	}
+	defer monthRows.Close()
+
+	months := make([]model.WorkoutMonthHistory, 0, monthsLimit)
+	monthIndex := make(map[string]int, monthsLimit)
+	monthArgs := make([]interface{}, 1, monthsLimit+1)
+	monthArgs[0] = userID
+
+	for monthRows.Next() {
+		var month model.WorkoutMonthHistory
+		if err := monthRows.Scan(&month.Month, &month.WorkoutsCount, &month.TotalDistance, &month.TotalDuration); err != nil {
+			return nil, fmt.Errorf("scan month history summary: %w", err)
+		}
+
+		month.Workouts = make([]model.WorkoutPreview, 0)
+		monthKey := month.Month.Format("2006-01-02")
+		monthIndex[monthKey] = len(months)
+		months = append(months, month)
+		monthArgs = append(monthArgs, month.Month)
+	}
+
+	if err := monthRows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate month history summary: %w", err)
+	}
+
+	if len(months) == 0 {
+		return months, nil
+	}
+
+	workoutsQuery := `
+		SELECT id, date, distance, duration, pace, type_activity, COALESCE(notes, '')
+		FROM workouts
+		WHERE user_id = $1 AND date_trunc('month', date)::date IN (`
+
+	for i := 2; i <= len(monthArgs); i++ {
+		if i > 2 {
+			workoutsQuery += ", "
+		}
+		workoutsQuery += fmt.Sprintf("$%d", i)
+	}
+
+	workoutsQuery += `)
+		ORDER BY date DESC, id DESC
+	`
+
+	workoutRows, err := db.Query(ctx, workoutsQuery, monthArgs...)
+	if err != nil {
+		return nil, my_errors.ErrQueryWorkoutHistory
+	}
+	defer workoutRows.Close()
+
+	for workoutRows.Next() {
+		var workout model.WorkoutPreview
+		if err := workoutRows.Scan(
+			&workout.ID,
+			&workout.Date,
+			&workout.Distance,
+			&workout.Duration,
+			&workout.Pace,
+			&workout.TypeActivity,
+			&workout.Place,
+		); err != nil {
+			return nil, fmt.Errorf("scan workout month preview: %w", err)
+		}
+
+		workout.PreviewImage = defaultWorkoutPreviewImage(workout.TypeActivity)
+
+		monthStart := time.Date(workout.Date.Year(), workout.Date.Month(), 1, 0, 0, 0, 0, workout.Date.Location())
+		monthKey := monthStart.Format("2006-01-02")
+
+		idx, ok := monthIndex[monthKey]
+		if !ok {
+			continue
+		}
+
+		months[idx].Workouts = append(months[idx].Workouts, workout)
+	}
+
+	if err := workoutRows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate workout month preview: %w", err)
+	}
+
+	return months, nil
+}
+
+func defaultWorkoutPreviewImage(typeActivity string) string {
+	activity := strings.ToLower(strings.TrimSpace(typeActivity))
+
+	switch activity {
+	case "run", "running":
+		return "/assets/workouts/running.jpg"
+	case "trail_run", "trail":
+		return "/assets/workouts/trail.jpg"
+	case "bike", "cycling":
+		return "/assets/workouts/cycling.jpg"
+	case "swim", "swimming":
+		return "/assets/workouts/swimming.jpg"
+	default:
+		return "/assets/workouts/default.jpg"
+	}
 }

@@ -33,6 +33,11 @@ func (h *WorkoutHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	const maxUploadSize = 5 * 1024 * 1024 // 5 МБ — больше FIT-файлов почти не бывает
+
+	r.Body = http.MaxBytesReader(w, r.Body, maxUploadSize)
+	defer r.Body.Close()
+
 	contentType := r.Header.Get("Content-Type")
 
 	var workout *model.Workouts
@@ -50,6 +55,10 @@ func (h *WorkoutHandler) Create(w http.ResponseWriter, r *http.Request) {
 		strings.HasPrefix(contentType, "application/vnd.garmin.fit") {
 		// Загрузка FIT файла как бинарного потока
 		data, err := io.ReadAll(r.Body)
+		if len(data) == 0 {
+			http.Error(w, "empty file", http.StatusBadRequest)
+			return
+		}
 		if err != nil {
 			http.Error(w, "failed to read file", http.StatusBadRequest)
 			return
@@ -111,7 +120,11 @@ func (h *WorkoutHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	idStr := chi.URLParam(r, "id")
-	id, _ := strconv.ParseInt(idStr, 10, 64)
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		http.Error(w, "invalid id", http.StatusBadRequest)
+		return
+	}
 
 	workout, err := h.service.Update(r.Context(), userID, id, req)
 	if err != nil {
@@ -153,11 +166,19 @@ func (h *WorkoutHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 	var from, to *time.Time
 
 	if fromStr != "" {
-		parsed, _ := time.Parse("2006-01-02", fromStr)
+		parsed, err := time.Parse("2006-01-02", fromStr)
+		if err != nil {
+			http.Error(w, "invalid 'from' date format", http.StatusBadRequest)
+			return
+		}
 		from = &parsed
 	}
 	if toStr != "" {
-		parsed, _ := time.Parse("2006-01-02", toStr)
+		parsed, err := time.Parse("2006-01-02", toStr)
+		if err != nil {
+			http.Error(w, "invalid 'to' date format", http.StatusBadRequest)
+			return
+		}
 		to = &parsed
 	}
 
@@ -181,6 +202,35 @@ func (h *WorkoutHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 		responses[i] = mapper.ToWorkoutsResponse(&w)
 	}
 	json.NewEncoder(w).Encode(responses)
+}
+
+func (h *WorkoutHandler) GetHistoryByMonth(w http.ResponseWriter, r *http.Request) {
+	userID, ok := auth.GetUserID(r.Context())
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	monthsLimit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
+	monthsOffset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+
+	if monthsLimit <= 0 {
+		monthsLimit = 3
+	}
+	if monthsLimit > 12 {
+		monthsLimit = 12
+	}
+	if monthsOffset < 0 {
+		monthsOffset = 0
+	}
+
+	history, err := h.service.GetMonthlyHistory(r.Context(), userID, monthsLimit, monthsOffset)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	json.NewEncoder(w).Encode(mapper.ToWorkoutHistoryResponse(history))
 }
 
 func (h *WorkoutHandler) GetByID(w http.ResponseWriter, r *http.Request) {

@@ -110,19 +110,26 @@ func (h *UserHandler) Login(w http.ResponseWriter, r *http.Request) {
 		// Domain:   "example.com",           // если нужно
 	})
 
-	// Отдаём клиенту только access token
-	resp := dto.AuthResponse{
+	// Если TOTP включена: НЕ выдаём access token, требуем проверку 2FA
+	if totpEnabled {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusAccepted) // 202 Accepted - требуется дополнительное действие
+		_ = json.NewEncoder(w).Encode(dto.AuthResponse{
+			AccessToken: "",              // пусто!
+			ExpiresIn:   0,               // пусто!
+			Require2FA:  true,
+			Message:     "2FA required - call /verify-2fa with TOTP code",
+		})
+		return
+	}
+
+	// TOTP отключена - выдаём полный access token
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(dto.AuthResponse{
 		AccessToken: res.AccessToken,
 		ExpiresIn:   res.ExpiresIn,
 		Message:     "ok",
-	}
-
-	if totpEnabled {
-		resp.Require2FA = true
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(resp)
+	})
 }
 
 func (h *UserHandler) Me(w http.ResponseWriter, r *http.Request) {
@@ -147,10 +154,18 @@ func (h *UserHandler) Me(w http.ResponseWriter, r *http.Request) {
 	}
 
 	_ = json.NewEncoder(w).Encode(dto.UserResponse{
-		ID:          userResp.ID,
-		Email:       userResp.Email,
-		Name:        userResp.Name,
-		TOTPEnabled: totpEnabled,
+		ID:            userResp.ID,
+		Email:         userResp.Email,
+		Name:          userResp.Name,
+		TOTPEnabled:   totpEnabled,
+		Gender:        userResp.Gender,
+		Age:           userResp.Age,
+		WeightKg:      userResp.WeightKg,
+		HeightCm:      userResp.HeightCm,
+		RestingHR:     userResp.RestingHR,
+		MaxHR:         userResp.MaxHR,
+		WeeklyRuns:    userResp.WeeklyRuns,
+		ThresholdPace: userResp.ThresholdPace,
 	})
 }
 
@@ -171,12 +186,12 @@ func (h *UserHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Успешно → ставим новый refresh (ротация — лучшая практика)
+	// Успешно → ставим новый refresh
 	http.SetCookie(w, &http.Cookie{
 		Name:     "refresh_token",
 		Value:    res.RefreshToken,
 		Path:     "/",
-		MaxAge:   res.ExpiresIn,
+		MaxAge:   60 * 60 * 24 * 30,
 		HttpOnly: true,
 		Secure:   os.Getenv("APP_ENV") == "production",
 		SameSite: http.SameSiteStrictMode,
@@ -251,11 +266,21 @@ func (h *UserHandler) Enable2FA(w http.ResponseWriter, r *http.Request) {
 func (h *UserHandler) Verify2FA(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	userID, ok := auth.GetUserID(ctx)
-	if !ok {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	// Требуем refresh token из cookie для идентификации (БЕЗ JWT requirement)
+	cookie, err := r.Cookie("refresh_token")
+	if err != nil || cookie.Value == "" {
+		http.Error(w, "refresh_token cookie required", http.StatusUnauthorized)
 		return
 	}
+
+	// Валидируем refresh token и получаем userID из сессии
+	refreshHash := auth.HashToken(cookie.Value)
+	session, err := h.service.GetSessionByHash(ctx, refreshHash) // нужно добавить этот метод
+	if err != nil {
+		http.Error(w, "invalid or expired session", http.StatusUnauthorized)
+		return
+	}
+	userID := session.UserId
 
 	var req struct {
 		Code string `json:"code"`
@@ -270,6 +295,7 @@ func (h *UserHandler) Verify2FA(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Проверяем TOTP code
 	valid, err := h.service.VerifyTOTP(ctx, userID, req.Code)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -280,6 +306,7 @@ func (h *UserHandler) Verify2FA(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 2FA успешна - выдаём полный access token
 	var res *dto.AuthResult
 
 	res, err = h.service.IssueTokensAfter2FA(ctx, userID)
@@ -299,6 +326,7 @@ func (h *UserHandler) Verify2FA(w http.ResponseWriter, r *http.Request) {
 		SameSite: http.SameSiteStrictMode,
 	})
 
+	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(dto.AuthResponse{
 		AccessToken: res.AccessToken,
 		ExpiresIn:   res.ExpiresIn,

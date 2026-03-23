@@ -12,7 +12,7 @@ import (
 )
 
 type MetricService interface {
-	GetMetrics(ctx context.Context, filter dto.MetricsFilter) ([]model.Metrics, error)
+	GetMetrics(ctx context.Context, filter dto.MetricsFilter) (*model.Metrics, error)
 }
 
 type metricService struct {
@@ -20,19 +20,18 @@ type metricService struct {
 	validate *validator.Validate
 }
 
-func NewMetricsService(repo repository.MetricsRepository) MetricService {
-	validate := validator.New()
+func NewMetricsService(repo repository.MetricsRepository, validator *validator.Validate) MetricService {
 
 	return &metricService{
 		repo:     repo,
-		validate: validate,
+		validate: validator,
 	}
 }
 
-func (s *metricService) GetMetrics(ctx context.Context, filter dto.MetricsFilter) ([]model.Metrics, error) {
-	metrics, err := s.repo.GetMetrics(ctx, filter)
+func (s *metricService) GetMetrics(ctx context.Context, filter dto.MetricsFilter) (*model.Metrics, error) {
+	metric, err := s.repo.GetMetrics(ctx, filter)
 	if errors.Is(err, my_errors.ErrMetricNotFound) {
 		return nil, err
 	}
-	return metrics, err
+	return metric, err
 }

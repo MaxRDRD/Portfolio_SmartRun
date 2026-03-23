@@ -26,10 +26,16 @@ var (
 	//workouts
 	ErrWorkoutNotFound      = errors.New("workout not found")
 	ErrWorkoutAlreadyExists = errors.New("workout already exists")
+	ErrQueryWorkoutHistory  = errors.New("error querying workout history")
+	ErrWorkoutUpdate        = errors.New("error updating workout")
 
 	//password_reser
 	ErrPasswordResetHashNotFount = errors.New("password reset hash not found")
 
 	//hrzones
 	ErrHRZonesNotFound = errors.New("hrzones not found")
+
+	//daily_metrics
+	ErrDailyMetricNotFound      = errors.New("daily metric not found")
+	ErrDailyMetricAlreadyExists = errors.New("daily metric already exists")
 )

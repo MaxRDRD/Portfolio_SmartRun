@@ -18,6 +18,11 @@ type WorkoutsResponse struct {
 	VO2MaxEstimate          *float64 `json:"vo2max_estimate,omitempty"`
 	RecoveryTime            *int     `json:"recovery_time,omitempty"`
 	TrainingLoad            *float64 `json:"training_load,omitempty"`
+	TrainingStressScore     *float64 `json:"training_stress_score,omitempty"`
+	IntensityFactor         *float64 `json:"intensity_factor,omitempty"`
+	AvgStress               *int     `json:"avg_stress,omitempty"`
+	SdrrHrv                 *int     `json:"sdrr_hrv,omitempty"`
+	RmssdHrv                *int     `json:"rmssd_hrv,omitempty"`
 	PerceivedEffort         *int     `json:"perceived_effort,omitempty"`
 	Notes                   string   `json:"notes,omitempty"`
 	Shoes                   string   `json:"shoes,omitempty"`
@@ -82,4 +87,27 @@ type HRZonesRequest struct {
 	Zone3Seconds int `json:"zone_3_seconds"` // 70-80%
 	Zone4Seconds int `json:"zone_4_seconds"` // 80-90%
 	Zone5Seconds int `json:"zone_5_seconds"` // 90-100%
+}
+
+type WorkoutHistoryPreviewResponse struct {
+	ID           int64   `json:"id"`
+	Date         string  `json:"date"`
+	Distance     float64 `json:"distance"`
+	Duration     int     `json:"duration"`
+	Pace         float64 `json:"pace"`
+	TypeActivity string  `json:"type_activity"`
+	Place        string  `json:"place"`
+	PreviewImage string  `json:"preview_image"`
+}
+
+type WorkoutMonthHistoryResponse struct {
+	Month         string                          `json:"month"`
+	WorkoutsCount int                             `json:"workouts_count"`
+	TotalDistance float64                         `json:"total_distance"`
+	TotalDuration int                             `json:"total_duration"`
+	Workouts      []WorkoutHistoryPreviewResponse `json:"workouts"`
+}
+
+type WorkoutHistoryResponse struct {
+	Months []WorkoutMonthHistoryResponse `json:"months"`
 }

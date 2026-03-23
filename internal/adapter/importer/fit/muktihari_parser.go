@@ -28,6 +28,9 @@ func (p *MuktihariFitParser) Parse(ctx context.Context, data []byte) (*importer.
 
 	activity := filedef.NewActivity(fit.Messages...)
 
+	if len(activity.Sessions) == 0 {
+		return nil, fmt.Errorf("no sessions found in FIT file")
+	}
 	// Берём первую сессию
 	session := activity.Sessions[0]
 
@@ -36,7 +39,7 @@ func (p *MuktihariFitParser) Parse(ctx context.Context, data []byte) (*importer.
 	ad := &importer.ActivityData{
 		StartTime:    session.StartTime,
 		Distance:     float64(session.TotalDistance) / 1000.0,
-		Duration:     int(session.TotalElapsedTime),
+		Duration:     int(session.TotalTimerTime),
 		TypeActivity: session.Sport.String(),
 	}
 
@@ -73,6 +76,14 @@ func (p *MuktihariFitParser) Parse(ctx context.Context, data []byte) (*importer.
 		trainLoad := float64(session.TrainingLoadPeak)
 		ad.TrainingLoad = &trainLoad
 	}
+	if session.TrainingStressScore > 0 {
+		tss := float64(session.TrainingStressScore) / 10.0
+		ad.TrainingStressScore = &tss
+	}
+	if session.IntensityFactor > 0 {
+		ifVal := float64(session.IntensityFactor) / 1000.0
+		ad.IntensityFactor = &ifVal
+	}
 	if session.TotalTrainingEffect != 0 {
 		te := float64(session.TotalTrainingEffect) / 10.0
 		ad.AerobicTrainingEffect = &te
@@ -84,6 +95,26 @@ func (p *MuktihariFitParser) Parse(ctx context.Context, data []byte) (*importer.
 	if session.WorkoutRpe != 0 {
 		rpe := int(session.WorkoutRpe) / 10 // шкала 0-100 → 0-10
 		ad.RPE = &rpe
+	}
+	if session.AvgStress > 0 {
+		avgStress := int(session.AvgStress)
+		ad.AvgStress = &avgStress
+	}
+	if session.SdrrHrv > 0 {
+		sdrr := int(session.SdrrHrv)
+		ad.SdrrHrv = &sdrr
+	}
+	if session.RmssdHrv > 0 {
+		rmssd := int(session.RmssdHrv)
+		ad.RmssdHrv = &rmssd
+	}
+
+	if len(session.TimeInHrZone) > 0 {
+		zoneTimes := make([]int, 0, len(session.TimeInHrZone))
+		for _, z := range session.TimeInHrZone {
+			zoneTimes = append(zoneTimes, int(z/1000))
+		}
+		ad.TimeInHrZone = zoneTimes
 	}
 
 	return ad, nil

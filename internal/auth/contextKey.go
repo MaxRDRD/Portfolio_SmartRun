@@ -6,7 +6,7 @@ type contextKey string
 
 const UserIDKey contextKey = "userID"
 
-func SetUserID(ctx context.Context, id int) context.Context {
+func SetUserID(ctx context.Context, id int64) context.Context {
 	return context.WithValue(ctx, UserIDKey, id)
 }
 

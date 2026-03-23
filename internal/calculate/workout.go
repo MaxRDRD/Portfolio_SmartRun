@@ -9,10 +9,10 @@ import (
 func CalculateDerivedMetrics(workout *model.Workouts, u *model.User) {
 
 	// ---------------------------
-	// 1. Pace (сек/км)
+	// 1. Pace (мин/км)
 	// ---------------------------
 	if workout.Distance > 0 && workout.Duration > 0 {
-		workout.Pace = float64(workout.Duration) / workout.Distance
+		workout.Pace = (float64(workout.Duration) / 60.0) / workout.Distance
 
 	}
 

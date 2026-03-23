@@ -19,7 +19,16 @@ func NewHRZonesRepository(db repository.DB) repository.HRZonesRepository {
 	return &hrZonesRepo{db: db}
 }
 
+func (r *hrZonesRepo) getDB(ctx context.Context) repository.DB {
+	if tx, ok := getTx(ctx); ok {
+		return tx
+	}
+	return r.db // pool
+}
+
 func (r *hrZonesRepo) Upsert(ctx context.Context, zones *model.WorkoutHRZones) error {
+	db := r.getDB(ctx)
+
 	sql := `
 	INSERT INTO hrzones (workout_id, zone1, zone2, zone3, zone4, zone5)
 	VALUES ($1, $2, $3, $4, $5, $6)
@@ -31,7 +40,7 @@ func (r *hrZonesRepo) Upsert(ctx context.Context, zones *model.WorkoutHRZones) e
 		zone5 = EXCLUDED.zone5
 	`
 
-	tag, err := r.db.Exec(ctx, sql,
+	tag, err := db.Exec(ctx, sql,
 		zones.WorkoutID,
 		zones.Zone1Seconds,
 		zones.Zone2Seconds,
@@ -52,6 +61,8 @@ func (r *hrZonesRepo) Upsert(ctx context.Context, zones *model.WorkoutHRZones) e
 }
 
 func (r *hrZonesRepo) GetByWorkoutID(ctx context.Context, workoutID int64) (*model.WorkoutHRZones, error) {
+	db := r.getDB(ctx)
+
 	sql := `
 	SELECT
 		zone1, zone2, zone3, zone4, zone5
@@ -60,7 +71,7 @@ func (r *hrZonesRepo) GetByWorkoutID(ctx context.Context, workoutID int64) (*mod
 	`
 
 	var hrzones model.WorkoutHRZones
-	err := r.db.QueryRow(ctx, sql, workoutID).Scan(
+	err := db.QueryRow(ctx, sql, workoutID).Scan(
 		&hrzones.Zone1Seconds,
 		&hrzones.Zone2Seconds,
 		&hrzones.Zone3Seconds,
@@ -78,11 +89,12 @@ func (r *hrZonesRepo) GetByWorkoutID(ctx context.Context, workoutID int64) (*mod
 }
 
 func (r *hrZonesRepo) DeleteByWorkoutID(ctx context.Context, workoutID int64) error {
+	db := r.getDB(ctx)
 	sqlQuery := `
         DELETE FROM hrzones
 		WHERE workout_id = $1
     `
-	tag, err := r.db.Exec(ctx, sqlQuery, workoutID)
+	tag, err := db.Exec(ctx, sqlQuery, workoutID)
 	if err != nil {
 		return fmt.Errorf("failed to delete workout: %w", err)
 	}

@@ -36,6 +36,7 @@ type AuthService interface {
 	RequestPasswordReset(ctx context.Context, email string) error
 	ValidateResetToken(ctx context.Context, token string) (int64, error) // возвращает userID если токен валиден
 	PerformPasswordReset(ctx context.Context, userID int64, newPassword string, resetToken string) error
+	GetSessionByHash(ctx context.Context, tokenHash string) (*model.Session, error) // для Verify2FA
 }
 
 type authService struct {
@@ -55,7 +56,8 @@ func NewUserService(userRepo repository.UserRepository,
 	passwordResetRepo repository.PasswordResetRepository,
 	emailService EmailService,
 	cfg config.AuthConfig,
-	txManager repository.TxManager) AuthService {
+	txManager repository.TxManager,
+	validator *validator.Validate) AuthService {
 	return &authService{
 		userRepo:          userRepo,
 		sessionRepo:       sessionRepo,
@@ -63,7 +65,7 @@ func NewUserService(userRepo repository.UserRepository,
 		passwordResetRepo: passwordResetRepo,
 		emailService:      emailService,
 		cfg:               cfg,
-		validate:          validator.New(),
+		validate:          validator,
 		txManager:         txManager,
 	}
 }
@@ -104,6 +106,28 @@ func (s *authService) Register(ctx context.Context, req dto.RegisterRequest) (*d
 			Name:     req.Name,
 			Email:    req.Email,
 			Password: string(hash),
+			Gender:   strings.ToLower(strings.TrimSpace(req.Gender)),
+		}
+		if req.Age != nil {
+			user.Age = *req.Age
+		}
+		if req.WeightKg != nil {
+			user.WeightKg = *req.WeightKg
+		}
+		if req.HeightCm != nil {
+			user.HeightCm = *req.HeightCm
+		}
+		if req.RestingHR != nil {
+			user.RestingHR = *req.RestingHR
+		}
+		if req.MaxHR != nil {
+			user.MaxHR = *req.MaxHR
+		}
+		if req.WeeklyRuns != nil {
+			user.WeeklyRuns = *req.WeeklyRuns
+		}
+		if req.ThresholdPace != nil {
+			user.ThresholdPace = *req.ThresholdPace
 		}
 
 		if err = s.userRepo.CreateUser(ctx, user); err != nil {
@@ -129,10 +153,18 @@ func (s *authService) Register(ctx context.Context, req dto.RegisterRequest) (*d
 			ExpiresIn:    int(s.cfg.AccessTokenTTL.Seconds()),
 			RefreshToken: refreshToken,
 			User: &dto.UserResponse{
-				ID:          user.ID,
-				Email:       user.Email,
-				Name:        user.Name,
-				TOTPEnabled: false,
+				ID:            user.ID,
+				Email:         user.Email,
+				Name:          user.Name,
+				TOTPEnabled:   false,
+				Gender:        user.Gender,
+				Age:           user.Age,
+				WeightKg:      user.WeightKg,
+				HeightCm:      user.HeightCm,
+				RestingHR:     user.RestingHR,
+				MaxHR:         user.MaxHR,
+				WeeklyRuns:    user.WeeklyRuns,
+				ThresholdPace: user.ThresholdPace,
 			},
 		}
 
@@ -185,12 +217,12 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (*dto.Aut
 			return err
 		}
 
-		accessToken, err := auth.GenerateAccessToken(user.ID, s.cfg.AccessTokenTTL)
+		enabled, err := s.totpRepo.IsTOTPEnabled(ctx, user.ID)
 		if err != nil {
 			return err
 		}
 
-		enabled, err := s.totpRepo.IsTOTPEnabled(ctx, user.ID)
+		accessToken, err := auth.GenerateAccessToken(user.ID, s.cfg.AccessTokenTTL)
 		if err != nil {
 			return err
 		}
@@ -200,10 +232,18 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (*dto.Aut
 			ExpiresIn:    int(s.cfg.AccessTokenTTL.Seconds()),
 			RefreshToken: refreshToken,
 			User: &dto.UserResponse{
-				ID:          user.ID,
-				Email:       user.Email,
-				Name:        user.Name,
-				TOTPEnabled: enabled,
+				ID:            user.ID,
+				Email:         user.Email,
+				Name:          user.Name,
+				TOTPEnabled:   enabled,
+				Gender:        user.Gender,
+				Age:           user.Age,
+				WeightKg:      user.WeightKg,
+				HeightCm:      user.HeightCm,
+				RestingHR:     user.RestingHR,
+				MaxHR:         user.MaxHR,
+				WeeklyRuns:    user.WeeklyRuns,
+				ThresholdPace: user.ThresholdPace,
 			},
 		}
 		return nil
@@ -220,9 +260,17 @@ func (s *authService) GetUserByID(ctx context.Context, id int64) (*dto.UserRespo
 	}
 
 	return &dto.UserResponse{
-		ID:    user.ID,
-		Email: user.Email,
-		Name:  user.Name,
+		ID:            user.ID,
+		Email:         user.Email,
+		Name:          user.Name,
+		Gender:        user.Gender,
+		Age:           user.Age,
+		WeightKg:      user.WeightKg,
+		HeightCm:      user.HeightCm,
+		RestingHR:     user.RestingHR,
+		MaxHR:         user.MaxHR,
+		WeeklyRuns:    user.WeeklyRuns,
+		ThresholdPace: user.ThresholdPace,
 	}, nil
 }
 
@@ -451,4 +499,9 @@ func (s *authService) PerformPasswordReset(ctx context.Context, userID int64, ne
 		// Опционально, но рекомендуется
 		return s.sessionRepo.DeleteAllSessionsForUser(ctx, userID)
 	})
+}
+
+// GetSessionByHash — вспомогательный метод для Verify2FA (получить сессию по хешу refresh token)
+func (s *authService) GetSessionByHash(ctx context.Context, tokenHash string) (*model.Session, error) {
+	return s.sessionRepo.FindSessionByHash(ctx, tokenHash)
 }

@@ -29,14 +29,27 @@ func (r *userRepository) CreateUser(ctx context.Context, user *model.User) error
 	db := r.getDB(ctx)
 
 	query := `
-        INSERT INTO users (name, email, password, created_at)
-        VALUES ($1, $2, $3, NOW())
+        INSERT INTO users (
+			name, email, password,
+			gender, age, weight_kg, height_cm,
+			resting_hr, max_hr, weekly_runs, threshold_pace_min_km,
+			created_at
+		)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
         RETURNING id, created_at
     `
 	return db.QueryRow(ctx, query,
 		user.Name,
 		user.Email,
 		user.Password,
+		user.Gender,
+		user.Age,
+		user.WeightKg,
+		user.HeightCm,
+		user.RestingHR,
+		user.MaxHR,
+		user.WeeklyRuns,
+		user.ThresholdPace,
 	).Scan(&user.ID, &user.CreatedAt)
 }
 
@@ -52,7 +65,10 @@ func (r *userRepository) GetUserByEmail(ctx context.Context, email string) (*mod
 	db := r.getDB(ctx)
 
 	query := `
-	SELECT id, name, email, password, created_at
+	SELECT id, name, email, password,
+	       gender, age, weight_kg, height_cm,
+	       resting_hr, max_hr, weekly_runs, threshold_pace_min_km,
+	       created_at
 	FROM users
 	WHERE email = $1;
 	`
@@ -63,6 +79,14 @@ func (r *userRepository) GetUserByEmail(ctx context.Context, email string) (*mod
 		&user.Name,
 		&user.Email,
 		&user.Password,
+		&user.Gender,
+		&user.Age,
+		&user.WeightKg,
+		&user.HeightCm,
+		&user.RestingHR,
+		&user.MaxHR,
+		&user.WeeklyRuns,
+		&user.ThresholdPace,
 		&user.CreatedAt,
 	)
 
@@ -77,7 +101,12 @@ func (r *userRepository) GetUserByID(ctx context.Context, id int64) (*model.User
 	db := r.getDB(ctx)
 
 	query := `
-	SELECT id, name, email, password, created_at FROM users WHERE id = $1;
+	SELECT id, name, email, password,
+	       gender, age, weight_kg, height_cm,
+	       resting_hr, max_hr, weekly_runs, threshold_pace_min_km,
+	       created_at
+	FROM users
+	WHERE id = $1;
 	`
 
 	var user model.User
@@ -86,6 +115,14 @@ func (r *userRepository) GetUserByID(ctx context.Context, id int64) (*model.User
 		&user.Name,
 		&user.Email,
 		&user.Password,
+		&user.Gender,
+		&user.Age,
+		&user.WeightKg,
+		&user.HeightCm,
+		&user.RestingHR,
+		&user.MaxHR,
+		&user.WeeklyRuns,
+		&user.ThresholdPace,
 		&user.CreatedAt,
 	)
 
