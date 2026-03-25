@@ -52,9 +52,17 @@ func main() {
 	userHandler := myhttp.NewUserHandler(userService)
 
 	workoutRepo := workoutpostgres.NewWorkoutRepository(pool)
+	dailyMetricsRepo := repopostgres.NewDailyMetricRepository(pool)
 	parser := fit.NewMuktihariFitParser()
-	workoutService := service.NewWorkoutService(workoutRepo, userRepo, parser, validator, txManager)
+	workoutService := service.NewWorkoutService(workoutRepo, dailyMetricsRepo, userRepo, parser, validator, txManager)
 	workoutHandler := myhttp.NewWorkoutHandler(workoutService)
+
+	metricsRepo := repopostgres.NewMetricsRepository(pool)
+	metricsService := service.NewMetricsService(metricsRepo, validator)
+	metricsHandler := myhttp.NewMetricHandler(metricsService)
+
+	dailyMetricsService := service.NewDailyMetricService(dailyMetricsRepo, workoutRepo, validator, txManager)
+	dailyMetricsHandler := myhttp.NewDailyMetricHandler(dailyMetricsService)
 
 	s, err := gocron.NewScheduler()
 	if err != nil {
@@ -72,7 +80,7 @@ func main() {
 	s.Start()
 
 	// Создаём HTTP сервер
-	handler := server.NewServer(userHandler, workoutHandler)
+	handler := server.NewServer(userHandler, workoutHandler, metricsHandler, dailyMetricsHandler)
 	httpServer := &http.Server{
 		Addr:         ":8080",
 		Handler:      handler,

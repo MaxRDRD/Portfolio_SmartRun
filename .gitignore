@@ -1,4 +1,5 @@
 .env
 .vscode
 POSTMAN_GUIDE.md
+METRICS_RECALCULATION_STRATEGY.md
 SmartRun.postman_collection.json

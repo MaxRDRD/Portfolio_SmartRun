@@ -43,7 +43,10 @@ var (
 	})
 )
 
-func NewServer(userHandler *myhttp.UserHandler, workoutHandler *myhttp.WorkoutHandler) http.Handler {
+func NewServer(userHandler *myhttp.UserHandler,
+	workoutHandler *myhttp.WorkoutHandler,
+	metricsHandler *myhttp.MetricHandler,
+	dailyMetricsHandler *myhttp.DailyMetricHandler) http.Handler {
 	r := chi.NewRouter()
 
 	r.Use(middleware.RequestID)
@@ -78,6 +81,18 @@ func NewServer(userHandler *myhttp.UserHandler, workoutHandler *myhttp.WorkoutHa
 			r.With(userLimiter).Patch("/workouts/{id}", workoutHandler.Update)
 			r.With(userLimiter).Put("/workouts/{id}", workoutHandler.Update)
 			r.With(userLimiter).Delete("/workouts/{id}", workoutHandler.Delete)
+
+			r.With(userLimiter).Get("/metrics", metricsHandler.GetMetrics)
+			r.With(userLimiter).Post("/metrics", metricsHandler.CreateMetrics)
+			r.With(userLimiter).Delete("/metrics", metricsHandler.DeleteMetrics)
+			r.With(userLimiter).Get("/metrics", metricsHandler.GetStoredMetrics)
+			r.With(userLimiter).Put("/metrics", metricsHandler.UpdateMetrics)
+
+			r.With(userLimiter).Get("/daily-metrics", dailyMetricsHandler.GetDailyMetrics)
+			r.With(userLimiter).Post("/daily-metrics", dailyMetricsHandler.CreateDailyMetric)
+			r.With(userLimiter).Put("/daily-metrics/{id}", dailyMetricsHandler.UpdateDailyMetric)
+			r.With(userLimiter).Get("/daily-metrics/{id}", dailyMetricsHandler.GetDailyMetricByID)
+			r.With(userLimiter).Delete("/daily-metrics/{id}", dailyMetricsHandler.DeleteDailyMetric)
 		})
 	})
 

@@ -27,14 +27,16 @@ type WorkoutService interface {
 }
 
 type workoutService struct {
-	workoutRepo repository.WorkoutRepository
-	userRepo    repository.UserRepository
-	parser      importer.FitParser
-	validate    *validator.Validate
-	txManager   repository.TxManager
+	workoutRepo      repository.WorkoutRepository
+	dailyMetricsRepo repository.DailyMetricRepository
+	userRepo         repository.UserRepository
+	parser           importer.FitParser
+	validate         *validator.Validate
+	txManager        repository.TxManager
 }
 
 func NewWorkoutService(workoutRepo repository.WorkoutRepository,
+	dailyMetricsRepo repository.DailyMetricRepository,
 	userRepo repository.UserRepository,
 	parser importer.FitParser,
 	validate *validator.Validate,
@@ -48,11 +50,12 @@ func NewWorkoutService(workoutRepo repository.WorkoutRepository,
 	})
 	*/
 	return &workoutService{
-		workoutRepo: workoutRepo,
-		userRepo:    userRepo,
-		parser:      parser,
-		validate:    validate,
-		txManager:   txManager,
+		workoutRepo:      workoutRepo,
+		dailyMetricsRepo: dailyMetricsRepo,
+		userRepo:         userRepo,
+		parser:           parser,
+		validate:         validate,
+		txManager:        txManager,
 	}
 }
 
@@ -72,7 +75,7 @@ func (s *workoutService) Create(ctx context.Context, userID int64, req dto.Creat
 
 	var workout *model.Workouts
 
-	err = s.txManager.WithTransaction(ctx, func(ctx context.Context) error {
+	err = s.txManager.WithTransaction(ctx, func(txCtx context.Context) error {
 
 		workout = &model.Workouts{
 			UserID:        userID,
@@ -99,17 +102,23 @@ func (s *workoutService) Create(ctx context.Context, userID int64, req dto.Creat
 			workout.TimeInHrZone = mapHRZonesRequest(req.HRZones)
 		}
 
-		user, err := s.userRepo.GetUserByID(ctx, userID)
+		user, err := s.userRepo.GetUserByID(txCtx, userID)
 		if err != nil {
 			return my_errors.ErrUserNotFound
 		}
 
 		calculate.CalculateDerivedMetrics(workout, user)
 
-		err = s.workoutRepo.Create(ctx, workout)
+		err = s.workoutRepo.Create(txCtx, workout)
 		if err != nil {
 			return err
 		}
+
+		// Пересчитать daily metrics для дня этой новой тренировки
+		if err := s.recalculateDailyMetricsForDate(txCtx, userID, workout.Date); err != nil {
+			return fmt.Errorf("recalculate daily metrics: %w", err)
+		}
+
 		return nil
 	})
 
@@ -137,8 +146,22 @@ func (s *workoutService) GetAllByID(ctx context.Context, filter dto.WorkoutFilte
 }
 
 func (s *workoutService) Delete(ctx context.Context, id, userID int64) error {
-	err := s.txManager.WithTransaction(ctx, func(ctx context.Context) error {
-		return s.workoutRepo.DeleteWorkout(ctx, id, userID)
+	// Получить workout ДО удаления (нужна дата для пересчета metrics)
+	workout, err := s.workoutRepo.GetByID(ctx, id, userID)
+	if err != nil {
+		return err
+	}
+
+	deleteDate := workout.Date
+
+	err = s.txManager.WithTransaction(ctx, func(txCtx context.Context) error {
+		// Удалить workout
+		if err := s.workoutRepo.DeleteWorkout(txCtx, id, userID); err != nil {
+			return err
+		}
+
+		// Пересчитать daily metrics для дня, откуда удалили тренировку
+		return s.recalculateDailyMetricsForDate(txCtx, userID, deleteDate)
 	})
 	return err
 }
@@ -157,20 +180,25 @@ func (s *workoutService) Update(ctx context.Context, userID, id int64, req dto.U
 		return nil, err
 	}
 
-	// 3. Применяем только те поля, которые пришли (partial update)
-	// === Вот и вся разница между PATCH и PUT ===
+	// Запомнили старую дату (может измениться)
+	oldDate := workout.Date
+
+	// 3. Применяем обновления в зависимости от метода
 	if isFullReplace {
-		// Полная замена: перезаписываем всё, что пришло
-		validupdate.ApplyUpdateRequest(workout, req) // новый метод
-	} else {
-		// Частичное обновление (по умолчанию)
-		validupdate.ApplyUpdateRequest(workout, req)
+		// PUT: Полная замена — требуем ВСЕ required поля в запросе
+		// Если основные поля пусты — это ошибка (не partial update)
+		if req.Date == "" || req.Distance == 0 || req.Duration == 0 || req.TypeActivity == "" {
+			return nil, errors.New("PUT requires all required fields: date, distance, duration, type_activity")
+		}
 	}
+	// PATCH обновляет только пришедшие non-empty поля
+	validupdate.ApplyUpdateRequest(workout, req)
 
 	// 4. Пересчитываем ВСЕ производные метрики на основе актуального состояния
 	calculate.CalculateDerivedMetrics(workout, user)
 
-	err = s.txManager.WithTransaction(ctx, func(ctx context.Context) error {
+	var updatedWorkout *model.Workouts
+	err = s.txManager.WithTransaction(ctx, func(txCtx context.Context) error {
 		// 5. Если пришли зоны — сохраняем массивом прямо в workouts
 		if req.HRZones != nil {
 			workout.TimeInHrZone = mapHRZonesRequest(req.HRZones)
@@ -184,17 +212,31 @@ func (s *workoutService) Update(ctx context.Context, userID, id int64, req dto.U
 			workout.PrimaryTrainingFocus = calculate.DeterminePrimaryFocus(*aerobic, *anaerobic, workout.TimeInHrZone)
 		}
 
-		err = s.workoutRepo.Update(ctx, workout)
+		err := s.workoutRepo.Update(txCtx, workout)
 		if err != nil {
 			return err
 		}
+		updatedWorkout = workout
+
+		// 6. Пересчитать daily metrics для дня изменённой тренировки
+		if err := s.recalculateDailyMetricsForDate(txCtx, userID, workout.Date); err != nil {
+			return fmt.Errorf("recalculate daily metrics: %w", err)
+		}
+
+		// 7. Если дата изменилась, пересчитать и старый день
+		if oldDate != workout.Date {
+			if err := s.recalculateDailyMetricsForDate(txCtx, userID, oldDate); err != nil {
+				return fmt.Errorf("recalculate old date daily metrics: %w", err)
+			}
+		}
+
 		return nil
 	})
 
 	if err != nil {
 		return nil, err
 	}
-	return workout, nil
+	return updatedWorkout, nil
 }
 
 func mapHRZonesRequest(z *dto.HRZonesRequest) []int {
@@ -254,7 +296,69 @@ func (s *workoutService) UploadFit(ctx context.Context, userID int64, fileData [
 		if err != nil {
 			return err
 		}
+
+		// Пересчитать daily metrics для дня этой новой тренировки
+		if err := s.recalculateDailyMetricsForDate(ctx, userID, workout.Date); err != nil {
+			return fmt.Errorf("recalculate daily metrics: %w", err)
+		}
+
 		return nil
 	})
 	return workout, nil
+}
+
+// recalculateDailyMetricsForDate пересчитывает daily metrics для конкретного дня
+// Получает все тренировки этого дня, пересчитывает метрики и сохраняет (INSERT или UPDATE)
+func (s *workoutService) recalculateDailyMetricsForDate(ctx context.Context, userID int64, date time.Time) error {
+	// Нормализуем дату (убираем время)
+	normalizedDate := time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, date.Location())
+
+	// Получить все тренировки этого дня
+	filter := dto.WorkoutFilter{
+		UserID: userID,
+		From:   &normalizedDate,
+		To:     &normalizedDate,
+	}
+	workouts, err := s.workoutRepo.GetAllByUserID(ctx, filter)
+	if err != nil && !errors.Is(err, my_errors.ErrWorkoutNotFound) {
+		return err
+	}
+
+	// Получить daily metric предыдущего дня (нужен для incremental streak и carry-over)
+	yesterday := normalizedDate.AddDate(0, 0, -1)
+	previousMetrics, err := s.dailyMetricsRepo.GetByUserIDAndDate(ctx, userID, yesterday)
+	if err != nil {
+		return err
+	}
+	// if previousMetrics == nil — это нормально, первый день пользователя
+
+	// ===== ГЛАВНОЕ: используем calculate.CalculateDailyMetrics =====
+	// Это функция автоматически:
+	// - рассчитает CTL/ATL/TSB/Readiness на основе тренировок
+	// - если нет тренировок → streak=0 но сохранит sleep/bodyBattery
+	// - вычислит Monotony/Strain (вариативность и нагрузку)
+	dailyMetric := calculate.CalculateDailyMetrics(workouts, previousMetrics)
+	dailyMetric.UserID = userID
+	dailyMetric.Date = normalizedDate
+
+	// Merge с существующей записью если пользователь ввел метрики вручную
+	existing, err := s.dailyMetricsRepo.GetByUserIDAndDate(ctx, userID, normalizedDate)
+	if err != nil {
+		return err
+	}
+	if existing != nil {
+		// Сохраняем пользовательский ввод (не перезаписываем)
+		if existing.SleepScore > 0 && dailyMetric.SleepScore == 0 {
+			dailyMetric.SleepScore = existing.SleepScore
+		}
+		if existing.StressAvg > 0 && dailyMetric.StressAvg == 0 {
+			dailyMetric.StressAvg = existing.StressAvg
+		}
+		if existing.BodyBatteryAvg > 0 && dailyMetric.BodyBatteryAvg == 0 {
+			dailyMetric.BodyBatteryAvg = existing.BodyBatteryAvg
+		}
+		dailyMetric.ID = existing.ID
+	}
+
+	return s.dailyMetricsRepo.UpdateOrCreate(ctx, dailyMetric)
 }
