@@ -1,1 +1,4 @@
 .env
+.vscode
+POSTMAN_GUIDE.md
+SmartRun.postman_collection.json

@@ -19,7 +19,7 @@ func NewUserRepository(db repository.DB) repository.UserRepository {
 }
 
 func (r *userRepository) getDB(ctx context.Context) repository.DB {
-	if tx, ok := getTx(ctx); ok {
+	if tx, ok := GetTx(ctx); ok {
 		return tx
 	}
 	return r.db // pool
@@ -151,7 +151,6 @@ func (r *userRepository) GetEmailByID(ctx context.Context, id int64) (string, er
 
 	return email, err
 }
-
 
 func (r *userRepository) UpdatePassword(ctx context.Context, userID int64, newHash string) error {
 	db := r.getDB(ctx)

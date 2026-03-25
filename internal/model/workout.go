@@ -52,15 +52,6 @@ type HeartRate struct {
 	MaxHR     int
 }
 
-type WorkoutHRZones struct {
-	WorkoutID    int64
-	Zone1Seconds int // < 60% HRmax (восстановление)
-	Zone2Seconds int // 60-70%
-	Zone3Seconds int // 70-80%
-	Zone4Seconds int // 80-90%
-	Zone5Seconds int // 90-100%
-}
-
 type WorkoutPreview struct {
 	ID           int64
 	Date         time.Time

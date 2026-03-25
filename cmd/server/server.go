@@ -75,6 +75,7 @@ func NewServer(userHandler *myhttp.UserHandler, workoutHandler *myhttp.WorkoutHa
 			r.With(userLimiter).Get("/workouts", workoutHandler.GetAll)
 			r.With(userLimiter).Get("/workouts/history", workoutHandler.GetHistoryByMonth)
 			r.With(userLimiter).Get("/workouts/{id}", workoutHandler.GetByID)
+			r.With(userLimiter).Patch("/workouts/{id}", workoutHandler.Update)
 			r.With(userLimiter).Put("/workouts/{id}", workoutHandler.Update)
 			r.With(userLimiter).Delete("/workouts/{id}", workoutHandler.Delete)
 		})

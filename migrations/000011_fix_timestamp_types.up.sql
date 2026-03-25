@@ -19,9 +19,7 @@ ALTER TABLE sessions
     USING expires_at AT TIME ZONE 'UTC';
 
 
-ALTER TABLE reset_tokens
-  ALTER COLUMN created_at SET DATA TYPE timestamptz
-    USING created_at AT TIME ZONE 'UTC',
+ALTER TABLE password_resets
   ALTER COLUMN expires_at SET DATA TYPE timestamptz
     USING expires_at AT TIME ZONE 'UTC';
 

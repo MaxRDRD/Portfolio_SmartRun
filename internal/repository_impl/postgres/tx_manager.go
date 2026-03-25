@@ -56,7 +56,7 @@ func (t *txManager) WithTransaction(ctx context.Context, fn func(context.Context
 }
 
 // Вспомогательная функция для репозиториев
-func getTx(ctx context.Context) (pgx.Tx, bool) {
+func GetTx(ctx context.Context) (pgx.Tx, bool) {
 	if tx, ok := ctx.Value(txKey{}).(pgx.Tx); ok {
 		return tx, true
 	}

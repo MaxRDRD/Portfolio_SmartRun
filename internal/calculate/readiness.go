@@ -36,14 +36,14 @@ func CalculateReadiness(workouts []model.Workouts, previousMetrics *model.DailyM
 	recommendation := recommendationByTSB(tsb)
 
 	return &model.DailyMetric{
-		Date:           time.Now().Format("2006-01-02"),
+		Date:           time.Now().UTC(),
 		ATL:            atl,
 		CTL:            ctl,
 		TSB:            tsb,
 		FatigueScore:   int(math.Round(fatigueScore)),
 		ReadinessScore: int(math.Round(readinessScore)),
 		Recommendation: recommendation,
-		UpdatedAt:      time.Now().UTC().Format(time.RFC3339),
+		UpdatedAt:      time.Now().UTC(),
 	}
 }
 

@@ -13,7 +13,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -125,8 +124,8 @@ func (h *WorkoutHandler) Update(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid id", http.StatusBadRequest)
 		return
 	}
-
-	workout, err := h.service.Update(r.Context(), userID, id, req)
+	isFullReplace := r.Method == http.MethodPut
+	workout, err := h.service.Update(r.Context(), userID, id, req, isFullReplace)
 	if err != nil {
 		if errors.Is(err, my_errors.ErrWorkoutNotFound) {
 			http.Error(w, err.Error(), http.StatusNotFound)
@@ -146,52 +145,18 @@ func (h *WorkoutHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	page, _ := strconv.Atoi(r.URL.Query().Get("page"))
-	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
-
-	if page <= 0 {
-		page = 1
-	}
-	if limit <= 0 {
-		limit = 10
-	}
-
-	offset := (page - 1) * limit
-
-	typeActive := r.URL.Query().Get("type")
-
-	fromStr := r.URL.Query().Get("from")
-	toStr := r.URL.Query().Get("to")
-
-	var from, to *time.Time
-
-	if fromStr != "" {
-		parsed, err := time.Parse("2006-01-02", fromStr)
-		if err != nil {
-			http.Error(w, "invalid 'from' date format", http.StatusBadRequest)
+	filter, err := buildWorkoutFilterFromQuery(r, userID)
+	if err != nil {
+		var badReqErr *queryParamError
+		if errors.As(err, &badReqErr) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		from = &parsed
-	}
-	if toStr != "" {
-		parsed, err := time.Parse("2006-01-02", toStr)
-		if err != nil {
-			http.Error(w, "invalid 'to' date format", http.StatusBadRequest)
-			return
-		}
-		to = &parsed
+		http.Error(w, "invalid query params", http.StatusBadRequest)
+		return
 	}
 
-	filter := dto.WorkoutFilter{
-		UserID: userID,
-		Type:   typeActive,
-		From:   from,
-		To:     to,
-		Limit:  limit,
-		Offset: offset,
-	}
-
-	workouts, err := h.service.GetAll(r.Context(), filter)
+	workouts, err := h.service.GetAllByID(r.Context(), filter)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

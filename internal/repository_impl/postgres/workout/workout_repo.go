@@ -4,11 +4,11 @@ import (
 	"SmartRun/internal/dto"
 	"SmartRun/internal/model"
 	"SmartRun/internal/repository"
+	"SmartRun/internal/repository_impl/postgres"
 	"SmartRun/pkg/my_errors"
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -23,7 +23,7 @@ func NewWorkoutRepository(db repository.DB) repository.WorkoutRepository {
 }
 
 func (r *workoutRepository) getDB(ctx context.Context) repository.DB {
-	if tx, ok := getTx(ctx); ok {
+	if tx, ok := postgres.GetTx(ctx); ok {
 		return tx
 	}
 	return r.db // pool
@@ -38,12 +38,12 @@ func (r *workoutRepository) Create(ctx context.Context, workout *model.Workouts)
             calories, avg_hr, max_hr, elevation_gain, avg_cadence, max_cadence,
             notes, shoes, vo2max_estimate, aerobic_training_effect,
 			anaerobic_training_effect, training_load, training_stress_score,
-			intensity_factor, avg_stress, sdrr_hrv, rmssd_hrv, recovery_time,
+			intensity_factor, avg_stress, sdrr_hrv, rmssd_hrv, time_in_hr_zone, recovery_time,
 			rpe, efficiency, primary_training_focus, elevation_loss
         ) VALUES (
             $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
 			$13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24,
-			$25, $26, $27
+			$25, $26, $27, $28, $29
         )
         RETURNING id, created_at
     `
@@ -71,6 +71,7 @@ func (r *workoutRepository) Create(ctx context.Context, workout *model.Workouts)
 		workout.AvgStress,
 		workout.SdrrHrv,
 		workout.RmssdHrv,
+		toInt32Slice(workout.TimeInHrZone),
 		workout.RecoveryTime,
 		workout.RPE,
 		workout.Efficiency,
@@ -82,143 +83,62 @@ func (r *workoutRepository) Create(ctx context.Context, workout *model.Workouts)
 func (r *workoutRepository) GetByID(ctx context.Context, id int64, userID int64) (*model.Workouts, error) {
 	db := r.getDB(ctx)
 
-	sqlQuery := `
-	SELECT date, distance, duration, pace, type_activity, calories,
-	       avg_hr, max_hr, elevation_gain, avg_cadence, max_cadence,
-	       notes, shoes, vo2max_estimate, aerobic_training_effect, anaerobic_training_effect,
-	       training_load, training_stress_score, intensity_factor, avg_stress, sdrr_hrv, rmssd_hrv,
-	       recovery_time, rpe, efficiency, primary_training_focus, elevation_loss
-	FROM workouts WHERE id = $1 AND user_id = $2
-	`
-	var workout model.Workouts
-	err := db.QueryRow(ctx, sqlQuery, id, userID).Scan(
-		&workout.Date,
-		&workout.Distance,
-		&workout.Duration,
-		&workout.Pace,
-		&workout.TypeActivity,
-		&workout.Calories,
-		&workout.AvgHR,
-		&workout.MaxHR,
-		&workout.ElevationGain,
-		&workout.AvgCadence,
-		&workout.MaxCadence,
-		&workout.Notes,
-		&workout.Shoes,
-		&workout.VO2MaxEstimate,
-		&workout.AerobicTrainingEffect,
-		&workout.AnaerobicTrainingEffect,
-		&workout.TrainingLoad,
-		&workout.TrainingStressScore,
-		&workout.IntensityFactor,
-		&workout.AvgStress,
-		&workout.SdrrHrv,
-		&workout.RmssdHrv,
-		&workout.RecoveryTime,
-		&workout.RPE,
-		&workout.Efficiency,
-		&workout.PrimaryTrainingFocus,
-		&workout.ElevationLoss,
-	)
+	sqlQuery := fmt.Sprintf(`
+		SELECT %s
+		FROM workouts 
+		WHERE id = $1 AND user_id = $2
+	`, selectWorkoutColumns)
 
-	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, my_errors.ErrWorkoutNotFound
+	row := db.QueryRow(ctx, sqlQuery, id, userID)
+	workout, err := r.scanWorkoutRow(row)
+
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, my_errors.ErrWorkoutNotFound
+		}
+		return nil, fmt.Errorf("scan workout: %w", err)
 	}
+
 	workout.ID = id
 	workout.UserID = userID
-
-	return &workout, err
+	return workout, nil
 }
 
+// GetAllByUserID получает все тренировки пользователя с опциональными фильтрами
 func (r *workoutRepository) GetAllByUserID(ctx context.Context, filter dto.WorkoutFilter) ([]model.Workouts, error) {
 	db := r.getDB(ctx)
 
-	query := `
-		SELECT id, date, distance, duration, pace, type_activity, calories,
-		       avg_hr, max_hr, elevation_gain, avg_cadence, max_cadence,
-		       notes, shoes, vo2max_estimate, aerobic_training_effect, anaerobic_training_effect,
-		       training_load, training_stress_score, intensity_factor, avg_stress, sdrr_hrv, rmssd_hrv,
-		       recovery_time, rpe, efficiency, primary_training_focus, elevation_loss
-		FROM workouts WHERE user_id = $1
-	`
+	// Построение WHERE условий
+	whereClause, args, argPos := r.buildWorkoutFilters(filter)
 
-	args := []interface{}{filter.UserID}
-	argPos := 2
+	// Построение ORDER BY/LIMIT/OFFSET
+	orderAndPaginationClause, orderArgs := r.buildOrderAndPagination(filter, argPos)
+	args = append(args, orderArgs...)
 
-	if filter.Type != "" {
-		query += fmt.Sprintf(" AND type_activity = $%d", argPos)
-		args = append(args, filter.Type)
-		argPos++
-	}
-
-	if filter.From != nil {
-		query += fmt.Sprintf(" AND date >= $%d", argPos)
-		args = append(args, *filter.From)
-		argPos++
-	}
-
-	if filter.To != nil {
-		query += fmt.Sprintf(" AND date <= $%d", argPos)
-		args = append(args, *filter.To)
-		argPos++
-	}
-
-	limit, offset := filter.Limit, filter.Offset
-	if limit <= 0 {
-		limit = 100
-	}
-
-	query += fmt.Sprintf(" ORDER BY date DESC LIMIT $%d OFFSET $%d", argPos, argPos+1)
-	args = append(args, limit, offset)
+	// Финальный SQL
+	query := fmt.Sprintf(`
+		SELECT %s
+		FROM workouts
+		%s%s
+	`, selectWorkoutColumns, whereClause, orderAndPaginationClause)
 
 	rows, err := db.Query(ctx, query, args...)
 	if err != nil {
-		return nil, fmt.Errorf("query all workouts: %w", err)
+		return nil, fmt.Errorf("query workouts: %w", err)
 	}
 	defer rows.Close()
 
 	var workouts []model.Workouts
-
 	for rows.Next() {
-		var workout model.Workouts
-		err := rows.Scan(
-			&workout.ID,
-			&workout.Date,
-			&workout.Distance,
-			&workout.Duration,
-			&workout.Pace,
-			&workout.TypeActivity,
-			&workout.Calories,
-			&workout.AvgHR,
-			&workout.MaxHR,
-			&workout.ElevationGain,
-			&workout.AvgCadence,
-			&workout.MaxCadence,
-			&workout.Notes,
-			&workout.Shoes,
-			&workout.VO2MaxEstimate,
-			&workout.AerobicTrainingEffect,
-			&workout.AnaerobicTrainingEffect,
-			&workout.TrainingLoad,
-			&workout.TrainingStressScore,
-			&workout.IntensityFactor,
-			&workout.AvgStress,
-			&workout.SdrrHrv,
-			&workout.RmssdHrv,
-			&workout.RecoveryTime,
-			&workout.RPE,
-			&workout.Efficiency,
-			&workout.PrimaryTrainingFocus,
-			&workout.ElevationLoss,
-		)
+		workout, err := r.scanWorkoutRow(rows)
 		if err != nil {
 			return nil, fmt.Errorf("scan workout: %w", err)
 		}
-		workouts = append(workouts, workout)
+		workouts = append(workouts, *workout)
 	}
 
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("rows iteration error: %w", err)
+		return nil, fmt.Errorf("rows iteration: %w", err)
 	}
 
 	return workouts, nil
@@ -254,10 +174,10 @@ func (r *workoutRepository) Update(ctx context.Context, workout *model.Workouts)
         aerobic_training_effect = $14, anaerobic_training_effect = $15,
 		training_load = $16, training_stress_score = $17,
 		intensity_factor = $18, avg_stress = $19, sdrr_hrv = $20, rmssd_hrv = $21,
-		recovery_time = $22, rpe = $23,
-		efficiency = $24, primary_training_focus = $25,
-		vo2max_estimate = $26, elevation_loss = $27
-		WHERE id = $28 AND user_id = $29
+		time_in_hr_zone = $22, recovery_time = $23, rpe = $24,
+		efficiency = $25, primary_training_focus = $26,
+		vo2max_estimate = $27, elevation_loss = $28
+		WHERE id = $29 AND user_id = $30
     `
 	tag, err := db.Exec(ctx, sqlQuery,
 		workout.Distance,
@@ -281,6 +201,7 @@ func (r *workoutRepository) Update(ctx context.Context, workout *model.Workouts)
 		workout.AvgStress,
 		workout.SdrrHrv,
 		workout.RmssdHrv,
+		toInt32Slice(workout.TimeInHrZone),
 		workout.RecoveryTime,
 		workout.RPE,
 		workout.Efficiency,
@@ -410,21 +331,4 @@ func (r *workoutRepository) GetMonthlyHistory(ctx context.Context, userID int64,
 	}
 
 	return months, nil
-}
-
-func defaultWorkoutPreviewImage(typeActivity string) string {
-	activity := strings.ToLower(strings.TrimSpace(typeActivity))
-
-	switch activity {
-	case "run", "running":
-		return "/assets/workouts/running.jpg"
-	case "trail_run", "trail":
-		return "/assets/workouts/trail.jpg"
-	case "bike", "cycling":
-		return "/assets/workouts/cycling.jpg"
-	case "swim", "swimming":
-		return "/assets/workouts/swimming.jpg"
-	default:
-		return "/assets/workouts/default.jpg"
-	}
 }

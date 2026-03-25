@@ -58,18 +58,18 @@ type UpdateRequest struct {
 	Duration     int     `json:"duration"`
 	TypeActivity string  `json:"type_activity"`
 
-	Calories      *int     `json:"calories,omitempty"`
-	AvgHR         *int     `json:"avg_hr,omitempty"`
-	MaxHR         *int     `json:"max_hr,omitempty"`
-	AvgCadence    *int     `json:"avg_cadence,omitempty"`
-	MaxCadence    *int     `json:"max_cadence,omitempty"`
-	ElevationGain *float64 `json:"elevation_gain,omitempty"`
-	ElevationLoss *float64 `json:"elevation_loss,omitempty"`
-	RPE           *int     `json:"rpe,omitempty"`
-	Notes         *string  `json:"notes,omitempty"`
-	Shoes         *string  `json:"shoes,omitempty"`
-
-	HRZones *HRZonesRequest `json:"hr_zones,omitempty"`
+	Calories      *int            `json:"calories,omitempty"`
+	AvgHR         *int            `json:"avg_hr,omitempty"`
+	MaxHR         *int            `json:"max_hr,omitempty"`
+	AvgCadence    *int            `json:"avg_cadence,omitempty"`
+	MaxCadence    *int            `json:"max_cadence,omitempty"`
+	ElevationGain *float64        `json:"elevation_gain,omitempty"`
+	ElevationLoss *float64        `json:"elevation_loss,omitempty"`
+	RPE           *int            `json:"rpe,omitempty"`
+	Notes         *string         `json:"notes,omitempty"`
+	Shoes         *string         `json:"shoes,omitempty"`
+	IsFullReplace bool            `json:"is_full_replace,omitempty"` // если true, то это полная замена (PUT), иначе частичное обновление (PATCH)
+	HRZones       *HRZonesRequest `json:"hr_zones,omitempty"`
 }
 
 type WorkoutFilter struct {
@@ -77,8 +77,27 @@ type WorkoutFilter struct {
 	Type   string     `json:"type,omitempty"`
 	From   *time.Time `json:"from,omitempty"`
 	To     *time.Time `json:"to,omitempty"`
-	Limit  int        `json:"limit,omitempty"`
-	Offset int        `json:"offset,omitempty"`
+
+	MinDistance *float64 `json:"min_distance,omitempty"`
+	MaxDistance *float64 `json:"max_distance,omitempty"`
+	MinDuration *int     `json:"min_duration,omitempty"`
+	MaxDuration *int     `json:"max_duration,omitempty"`
+	MinAvgHR    *int     `json:"min_avg_hr,omitempty"`
+	MaxAvgHR    *int     `json:"max_avg_hr,omitempty"`
+	MinPace     *float64 `json:"min_pace,omitempty"`
+	MaxPace     *float64 `json:"max_pace,omitempty"`
+	MinRPE      *int     `json:"min_rpe,omitempty"`
+	MaxRPE      *int     `json:"max_rpe,omitempty"`
+
+	HasNotes   *bool  `json:"has_notes,omitempty"`
+	HasHRZones *bool  `json:"has_hr_zones,omitempty"`
+	Shoes      string `json:"shoes,omitempty"`
+
+	Limit  int `json:"limit,omitempty"`
+	Offset int `json:"offset,omitempty"`
+
+	SortBy    string `json:"sort_by,omitempty"`    // date, distance, pace, avg_hr
+	SortOrder string `json:"sort_order,omitempty"` // asc, desc
 }
 
 type HRZonesRequest struct {
@@ -87,6 +106,7 @@ type HRZonesRequest struct {
 	Zone3Seconds int `json:"zone_3_seconds"` // 70-80%
 	Zone4Seconds int `json:"zone_4_seconds"` // 80-90%
 	Zone5Seconds int `json:"zone_5_seconds"` // 90-100%
+	Zone6Seconds int `json:"zone_6_seconds,omitempty"`
 }
 
 type WorkoutHistoryPreviewResponse struct {

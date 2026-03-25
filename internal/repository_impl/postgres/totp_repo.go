@@ -20,7 +20,7 @@ func NewTOTPRepository(db repository.DB) repository.TotpRepository {
 }
 
 func (r *totpRepository) getDB(ctx context.Context) repository.DB {
-	if tx, ok := getTx(ctx); ok {
+	if tx, ok := GetTx(ctx); ok {
 		return tx
 	}
 	return r.db // pool
@@ -28,7 +28,7 @@ func (r *totpRepository) getDB(ctx context.Context) repository.DB {
 
 func (r *totpRepository) GetTOTPSecret(ctx context.Context, userID int64) (string, error) {
 	db := r.getDB(ctx)
-	
+
 	query := `SELECT totp_secret FROM users WHERE id = $1;`
 
 	var TOTPSecret string
@@ -51,7 +51,7 @@ func (r *totpRepository) GetTOTPSecret(ctx context.Context, userID int64) (strin
 
 func (r *totpRepository) UpdateTOTPSecret(ctx context.Context, userID int64, secret string, enabled bool) error {
 	db := r.getDB(ctx)
-	
+
 	encrypted, err := mycrypto.Encrypt(secret)
 	if err != nil {
 		return fmt.Errorf("failed to encrypt TOTP secret: %w", err)
@@ -78,7 +78,7 @@ func (r *totpRepository) UpdateTOTPSecret(ctx context.Context, userID int64, sec
 
 func (r *totpRepository) IsTOTPEnabled(ctx context.Context, userID int64) (bool, error) {
 	db := r.getDB(ctx)
-	
+
 	query := `SELECT COALESCE(totp_enables, false) FROM users WHERE id = $1;`
 
 	var TOTPEnabled bool

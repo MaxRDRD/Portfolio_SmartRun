@@ -1,7 +1,7 @@
 CREATE TABLE daily_metrics (
     id              bigserial PRIMARY KEY,
     user_id         bigint NOT NULL,
-    date            date NOT NULL UNIQUE(user_id, date),
+    date            date NOT NULL,
     
     -- Основные нагрузки
     ctl             float,      -- Chronic Training Load (форма)
@@ -22,5 +22,7 @@ CREATE TABLE daily_metrics (
     -- Рекомендация (текст или enum)
     recommendation  text,
     
-    updated_at      timestamptz DEFAULT now()
+    updated_at      timestamptz DEFAULT now(),
+    
+    UNIQUE(user_id, date)
 );

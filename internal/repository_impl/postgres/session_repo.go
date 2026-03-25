@@ -21,7 +21,7 @@ func NewSessionRepository(db repository.DB) repository.SessionRepository {
 }
 
 func (r *sessionRepository) getDB(ctx context.Context) repository.DB {
-	if tx, ok := getTx(ctx); ok {
+	if tx, ok := GetTx(ctx); ok {
 		return tx
 	}
 	return r.db // pool

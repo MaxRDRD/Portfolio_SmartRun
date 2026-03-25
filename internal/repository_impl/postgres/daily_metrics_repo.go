@@ -16,7 +16,7 @@ func NewDailyMetricRepository(db repository.DB) repository.DailyMetricRepository
 }
 
 func (r *DailyMetricRepo) getDB(ctx context.Context) repository.DB {
-	if tx, ok := getTx(ctx); ok {
+	if tx, ok := GetTx(ctx); ok {
 		return tx
 	}
 	return r.db // pool
@@ -24,8 +24,8 @@ func (r *DailyMetricRepo) getDB(ctx context.Context) repository.DB {
 
 func (r *DailyMetricRepo) Create(ctx context.Context, dailyMetric model.DailyMetric) (*model.DailyMetric, error) {
 	sql := `
-	INSERT INTO daily_metrics (date, steps, ctl, atl, tsb, fatigure_score, readiness_score,
-	body_baterry_avg, total_calories, sleep_score, stress_avg, reco,endation, update_at)
+	INSERT INTO daily_metrics (date, steps, ctl, atl, tsb, fatigue_score, readiness_score,
+	body_battery_avg, total_calories, sleep_score, stress_avg, recommendation, updated_at)
 	VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, now())
 	RETURNING id
 	`
@@ -55,9 +55,9 @@ func (r *DailyMetricRepo) Create(ctx context.Context, dailyMetric model.DailyMet
 func (r *DailyMetricRepo) Update(ctx context.Context, dailyMetric model.DailyMetric) (*model.DailyMetric, error) {
 	sql := `
 	UPDATE daily_metrics
-	SET date = $1, steps = $2, ctl = $3, atl = $4, tsb = $5, fatigure_score = $6,
-	readiness_score = $7, body_baterry_avg = $8, total_calories = $9, sleep_score = $10,
-	stress_avg = $11, reco,endation = $12, update_at = now()
+	SET date = $1, steps = $2, ctl = $3, atl = $4, tsb = $5, fatigue_score = $6,
+	readiness_score = $7, body_battery_avg = $8, total_calories = $9, sleep_score = $10,
+	stress_avg = $11, recommendation = $12, updated_at = now()
 	WHERE id = $13
 	`
 
@@ -101,8 +101,8 @@ func (r *DailyMetricRepo) Delete(ctx context.Context, id int) error {
 
 func (r *DailyMetricRepo) GetByID(ctx context.Context, id int) (*model.DailyMetric, error) {
 	sql := `
-	SELECT id, date, steps, ctl, atl, tsb, fatigure_score, readiness_score,
-	body_baterry_avg, total_calories, sleep_score, stress_avg, reco,endation, update_at
+	SELECT id, date, steps, ctl, atl, tsb, fatigue_score, readiness_score,
+	body_battery_avg, total_calories, sleep_score, stress_avg, recommendation, updated_at
 	FROM daily_metrics
 	WHERE id = $1
 	`
@@ -132,8 +132,8 @@ func (r *DailyMetricRepo) GetByID(ctx context.Context, id int) (*model.DailyMetr
 
 func (r *DailyMetricRepo) GetAll(ctx context.Context) ([]model.DailyMetric, error) {
 	sql := `
-	SELECT id, date, steps, ctl, atl, tsb, fatigure_score, readiness_score,
-	body_baterry_avg, total_calories, sleep_score, stress_avg, reco,endation, update_at
+	SELECT id, date, steps, ctl, atl, tsb, fatigue_score, readiness_score,
+	body_battery_avg, total_calories, sleep_score, stress_avg, recommendation, updated_at
 	FROM daily_metrics
 	`
 	db := r.getDB(ctx)

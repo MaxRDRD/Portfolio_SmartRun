@@ -21,8 +21,7 @@ type WorkoutService interface {
 	GetByID(ctx context.Context, id int64, userID int64) (*model.Workouts, error)
 	GetAllByID(ctx context.Context, filter dto.WorkoutFilter) ([]model.Workouts, error)
 	Delete(ctx context.Context, id, userID int64) error
-	Update(ctx context.Context, userID, id int64, req dto.UpdateRequest) (*model.Workouts, error)
-	GetAll(ctx context.Context, filter dto.WorkoutFilter) ([]model.Workouts, error)
+	Update(ctx context.Context, userID, id int64, req dto.UpdateRequest, isFullReplace bool) (*model.Workouts, error)
 	GetMonthlyHistory(ctx context.Context, userID int64, monthsLimit, monthsOffset int) ([]model.WorkoutMonthHistory, error)
 	UploadFit(ctx context.Context, userID int64, fileData []byte) (*model.Workouts, error)
 }
@@ -30,7 +29,6 @@ type WorkoutService interface {
 type workoutService struct {
 	workoutRepo repository.WorkoutRepository
 	userRepo    repository.UserRepository
-	hrZonesRepo repository.HRZonesRepository
 	parser      importer.FitParser
 	validate    *validator.Validate
 	txManager   repository.TxManager
@@ -38,7 +36,6 @@ type workoutService struct {
 
 func NewWorkoutService(workoutRepo repository.WorkoutRepository,
 	userRepo repository.UserRepository,
-	hrZonesRepo repository.HRZonesRepository,
 	parser importer.FitParser,
 	validate *validator.Validate,
 	txManager repository.TxManager) WorkoutService {
@@ -53,7 +50,6 @@ func NewWorkoutService(workoutRepo repository.WorkoutRepository,
 	return &workoutService{
 		workoutRepo: workoutRepo,
 		userRepo:    userRepo,
-		hrZonesRepo: hrZonesRepo,
 		parser:      parser,
 		validate:    validate,
 		txManager:   txManager,
@@ -99,6 +95,9 @@ func (s *workoutService) Create(ctx context.Context, userID int64, req dto.Creat
 		if req.Shoes != nil {
 			workout.Shoes = *req.Shoes
 		}
+		if req.HRZones != nil {
+			workout.TimeInHrZone = mapHRZonesRequest(req.HRZones)
+		}
 
 		user, err := s.userRepo.GetUserByID(ctx, userID)
 		if err != nil {
@@ -110,25 +109,6 @@ func (s *workoutService) Create(ctx context.Context, userID int64, req dto.Creat
 		err = s.workoutRepo.Create(ctx, workout)
 		if err != nil {
 			return err
-		}
-
-		var zones *model.WorkoutHRZones
-		if req.HRZones != nil {
-			zones = &model.WorkoutHRZones{
-				WorkoutID:    workout.ID,
-				Zone1Seconds: req.HRZones.Zone1Seconds,
-				Zone2Seconds: req.HRZones.Zone2Seconds,
-				Zone3Seconds: req.HRZones.Zone3Seconds,
-				Zone4Seconds: req.HRZones.Zone4Seconds,
-				Zone5Seconds: req.HRZones.Zone5Seconds,
-				// можно добавить CreatedAt / UpdatedAt, Source ("manual", "coros", "garmin") и т.д.
-			}
-
-			// Сохраняем / обновляем зоны (отдельный репозиторий)
-			err = s.hrZonesRepo.Upsert(ctx, zones) // или Save / Update
-			if err != nil {
-				return err
-			}
 		}
 		return nil
 	})
@@ -158,19 +138,12 @@ func (s *workoutService) GetAllByID(ctx context.Context, filter dto.WorkoutFilte
 
 func (s *workoutService) Delete(ctx context.Context, id, userID int64) error {
 	err := s.txManager.WithTransaction(ctx, func(ctx context.Context) error {
-
-		err := s.workoutRepo.DeleteWorkout(ctx, id, userID)
-		if err != nil {
-			return err
-		}
-
-		err = s.hrZonesRepo.DeleteByWorkoutID(ctx, id)
-		return err
+		return s.workoutRepo.DeleteWorkout(ctx, id, userID)
 	})
 	return err
 }
 
-func (s *workoutService) Update(ctx context.Context, userID, id int64, req dto.UpdateRequest) (*model.Workouts, error) {
+func (s *workoutService) Update(ctx context.Context, userID, id int64, req dto.UpdateRequest, isFullReplace bool) (*model.Workouts, error) {
 
 	// 1. Получаем пользователя (нужен для расчётов)
 	user, err := s.userRepo.GetUserByID(ctx, userID)
@@ -185,38 +158,30 @@ func (s *workoutService) Update(ctx context.Context, userID, id int64, req dto.U
 	}
 
 	// 3. Применяем только те поля, которые пришли (partial update)
-	validupdate.ApplyUpdateRequest(workout, req)
+	// === Вот и вся разница между PATCH и PUT ===
+	if isFullReplace {
+		// Полная замена: перезаписываем всё, что пришло
+		validupdate.ApplyUpdateRequest(workout, req) // новый метод
+	} else {
+		// Частичное обновление (по умолчанию)
+		validupdate.ApplyUpdateRequest(workout, req)
+	}
 
 	// 4. Пересчитываем ВСЕ производные метрики на основе актуального состояния
 	calculate.CalculateDerivedMetrics(workout, user)
 
 	err = s.txManager.WithTransaction(ctx, func(ctx context.Context) error {
-		// 5. Если пришли зоны — обрабатываем их отдельно
-		var zones *model.WorkoutHRZones
+		// 5. Если пришли зоны — сохраняем массивом прямо в workouts
 		if req.HRZones != nil {
-			zones = &model.WorkoutHRZones{
-				WorkoutID:    workout.ID,
-				Zone1Seconds: req.HRZones.Zone1Seconds,
-				Zone2Seconds: req.HRZones.Zone2Seconds,
-				Zone3Seconds: req.HRZones.Zone3Seconds,
-				Zone4Seconds: req.HRZones.Zone4Seconds,
-				Zone5Seconds: req.HRZones.Zone5Seconds,
-				// можно добавить CreatedAt / UpdatedAt, Source ("manual", "coros", "garmin") и т.д.
-			}
-
-			// Сохраняем / обновляем зоны (отдельный репозиторий)
-			err = s.hrZonesRepo.Upsert(ctx, zones) // или Save / Update
-			if err != nil {
-				return err
-			}
+			workout.TimeInHrZone = mapHRZonesRequest(req.HRZones)
 
 			// Сразу рассчитываем Training Effect на основе свежих зон
-			aerobic, anaerobic := calculate.CalculateTrainingEffect(zones, workout.Duration)
+			aerobic, anaerobic := calculate.CalculateTrainingEffect(workout.TimeInHrZone, workout.Duration)
 			workout.AerobicTrainingEffect = aerobic
 			workout.AnaerobicTrainingEffect = anaerobic
 
 			// Опционально: определяем основной фокус тренировки
-			workout.PrimaryTrainingFocus = calculate.DeterminePrimaryFocus(*aerobic, *anaerobic, zones)
+			workout.PrimaryTrainingFocus = calculate.DeterminePrimaryFocus(*aerobic, *anaerobic, workout.TimeInHrZone)
 		}
 
 		err = s.workoutRepo.Update(ctx, workout)
@@ -232,8 +197,17 @@ func (s *workoutService) Update(ctx context.Context, userID, id int64, req dto.U
 	return workout, nil
 }
 
-func (s *workoutService) GetAll(ctx context.Context, filter dto.WorkoutFilter) ([]model.Workouts, error) {
-	return s.workoutRepo.GetAllByUserID(ctx, filter)
+func mapHRZonesRequest(z *dto.HRZonesRequest) []int {
+	if z == nil {
+		return nil
+	}
+
+	zones := []int{z.Zone1Seconds, z.Zone2Seconds, z.Zone3Seconds, z.Zone4Seconds, z.Zone5Seconds}
+	if z.Zone6Seconds > 0 {
+		zones = append(zones, z.Zone6Seconds)
+	}
+
+	return zones
 }
 
 func (s *workoutService) GetMonthlyHistory(ctx context.Context, userID int64, monthsLimit, monthsOffset int) ([]model.WorkoutMonthHistory, error) {
@@ -279,19 +253,6 @@ func (s *workoutService) UploadFit(ctx context.Context, userID int64, fileData [
 		err = s.workoutRepo.Create(ctx, workout)
 		if err != nil {
 			return err
-		}
-		if len(activityData.TimeInHrZone) >= 5 {
-			zones := &model.WorkoutHRZones{
-				WorkoutID:    workout.ID,
-				Zone1Seconds: activityData.TimeInHrZone[0],
-				Zone2Seconds: activityData.TimeInHrZone[1],
-				Zone3Seconds: activityData.TimeInHrZone[2],
-				Zone4Seconds: activityData.TimeInHrZone[3],
-				Zone5Seconds: activityData.TimeInHrZone[4],
-			}
-			if err := s.hrZonesRepo.Upsert(ctx, zones); err != nil {
-				return err
-			}
 		}
 		return nil
 	})

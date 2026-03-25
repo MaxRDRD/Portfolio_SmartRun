@@ -94,25 +94,26 @@ func CalculateDerivedMetrics(workout *model.Workouts, u *model.User) {
 
 }
 
-func CalculateTrainingEffect(zones *model.WorkoutHRZones, durationSeconds int) (*float64, *float64) {
-	if zones == nil || durationSeconds == 0 {
+func CalculateTrainingEffect(zones []int, durationSeconds int) (*float64, *float64) {
+	if len(zones) == 0 || durationSeconds == 0 {
 		return nil, nil
 	}
+	_, z2, z3, z4, z5 := firstFiveZones(zones)
 
 	totalSeconds := float64(durationSeconds)
 
 	// Aerobic Training Effect (в основном Z2 + Z3 + часть Z4)
-	aerobicPoints := float64(zones.Zone2Seconds)*1.0 +
-		float64(zones.Zone3Seconds)*2.0 +
-		float64(zones.Zone4Seconds)*2.8 +
-		float64(zones.Zone5Seconds)*1.2
+	aerobicPoints := float64(z2)*1.0 +
+		float64(z3)*2.0 +
+		float64(z4)*2.8 +
+		float64(z5)*1.2
 
 	aerobic := (aerobicPoints / totalSeconds) * 300 // масштабирование до 0-5
 	aerobic = math.Max(0.0, math.Min(5.0, aerobic))
 
 	// Anaerobic Training Effect (в основном Z4 + Z5)
-	anaerobicPoints := float64(zones.Zone4Seconds)*1.8 +
-		float64(zones.Zone5Seconds)*5.0
+	anaerobicPoints := float64(z4)*1.8 +
+		float64(z5)*5.0
 
 	anaerobic := (anaerobicPoints / totalSeconds) * 180
 	anaerobic = math.Max(0.0, math.Min(5.0, anaerobic))
@@ -120,9 +121,26 @@ func CalculateTrainingEffect(zones *model.WorkoutHRZones, durationSeconds int) (
 	return &aerobic, &anaerobic
 }
 
-func DeterminePrimaryFocus(aerobic, anaerobic float64, zones *model.WorkoutHRZones) string {
-	zonesTotalSecond := zones.Zone1Seconds + zones.Zone2Seconds + zones.Zone3Seconds + zones.Zone4Seconds + zones.Zone5Seconds
-	if zones == nil || zonesTotalSecond == 0 {
+func DeterminePrimaryFocus(aerobic, anaerobic float64, zones []int) string {
+	if len(zones) == 0 {
+		// если нет зон — смотрим только на числовой эффект
+		if anaerobic > 3.8 {
+			return "Anaerobic Power"
+		}
+		if anaerobic > 2.8 {
+			return "Anaerobic"
+		}
+		if aerobic > 3.8 {
+			return "VO2max / Threshold"
+		}
+		if aerobic > 2.8 {
+			return "Aerobic Power"
+		}
+		return "Aerobic Endurance"
+	}
+	z1, z2, z3, z4, z5 := firstFiveZones(zones)
+	zonesTotalSecond := z1 + z2 + z3 + z4 + z5
+	if zonesTotalSecond == 0 {
 		// если нет зон — смотрим только на числовой эффект
 		if anaerobic > 3.8 {
 			return "Anaerobic Power"
@@ -142,13 +160,13 @@ func DeterminePrimaryFocus(aerobic, anaerobic float64, zones *model.WorkoutHRZon
 	// ────────────────────────────────────────────────
 	// Вариант 1: считаем долю высокоинтенсивной работы
 	// ────────────────────────────────────────────────
-	highIntensitySeconds := zones.Zone4Seconds + zones.Zone5Seconds
+	highIntensitySeconds := z4 + z5
 	highIntensityShare := float64(highIntensitySeconds) / float64(zonesTotalSecond)
 
 	// ────────────────────────────────────────────────
 	// Вариант 2: взвешенная анаэробная доля (Zone5 весит больше)
 	// ────────────────────────────────────────────────
-	anaerobicWeighted := float64(zones.Zone5Seconds)*1.0 + float64(zones.Zone4Seconds)*0.55
+	anaerobicWeighted := float64(z5)*1.0 + float64(z4)*0.55
 	anaerobicShare := anaerobicWeighted / float64(zonesTotalSecond)
 
 	// ────────────────────────────────────────────────
@@ -170,4 +188,12 @@ func DeterminePrimaryFocus(aerobic, anaerobic float64, zones *model.WorkoutHRZon
 	default:
 		return "Aerobic Endurance"
 	}
+}
+
+func firstFiveZones(zones []int) (int, int, int, int, int) {
+	var z [5]int
+	for i := 0; i < len(zones) && i < 5; i++ {
+		z[i] = zones[i]
+	}
+	return z[0], z[1], z[2], z[3], z[4]
 }

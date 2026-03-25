@@ -10,6 +10,7 @@ import (
 
 	myhttp "SmartRun/internal/handler/http"
 	repopostgres "SmartRun/internal/repository_impl/postgres"
+	workoutpostgres "SmartRun/internal/repository_impl/postgres/workout"
 	"context"
 	"log"
 	"net/http"
@@ -50,10 +51,9 @@ func main() {
 	userService := service.NewUserService(userRepo, sessionRepo, totpRepo, passwResetRepo, emailService, cfg, txManager, validator)
 	userHandler := myhttp.NewUserHandler(userService)
 
-	workoutRepo := repopostgres.NewWorkoutRepository(pool)
-	hrZonesRepo := repopostgres.NewHRZonesRepository(pool)
+	workoutRepo := workoutpostgres.NewWorkoutRepository(pool)
 	parser := fit.NewMuktihariFitParser()
-	workoutService := service.NewWorkoutService(workoutRepo, userRepo, hrZonesRepo, parser, validator, txManager)
+	workoutService := service.NewWorkoutService(workoutRepo, userRepo, parser, validator, txManager)
 	workoutHandler := myhttp.NewWorkoutHandler(workoutService)
 
 	s, err := gocron.NewScheduler()

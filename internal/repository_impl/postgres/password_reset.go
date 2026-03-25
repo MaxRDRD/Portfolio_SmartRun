@@ -19,7 +19,7 @@ func NewPasswordResetRepository(db repository.DB) repository.PasswordResetReposi
 }
 
 func (r *passwordResetRepo) getDB(ctx context.Context) repository.DB {
-	if tx, ok := getTx(ctx); ok {
+	if tx, ok := GetTx(ctx); ok {
 		return tx
 	}
 	return r.db // pool
