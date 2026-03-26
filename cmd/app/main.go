@@ -4,33 +4,49 @@ import (
 	"SmartRun/cmd/server"
 	db "SmartRun/internal/DB"
 	"SmartRun/internal/adapter/importer/fit"
+	"SmartRun/internal/cache"
 	"SmartRun/internal/config"
-	"SmartRun/internal/usecase/service"
-	"time"
-
 	myhttp "SmartRun/internal/handler/http"
+	"SmartRun/internal/logger"
+	"SmartRun/internal/middleware"
 	repopostgres "SmartRun/internal/repository_impl/postgres"
 	workoutpostgres "SmartRun/internal/repository_impl/postgres/workout"
+	"SmartRun/internal/usecase/service"
 	"context"
-	"log"
+	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
+	"runtime/debug"
 	"syscall"
+	"time"
 
 	"github.com/go-co-op/gocron/v2"
 	"github.com/go-playground/validator"
 )
 
 func main() {
-	ctx := context.Background()
+	log := logger.NewLogger()
+	ctx := logger.WithContext(context.Background(), log) // создаём базовый контекст с логгером
 	conn_string := os.Getenv("CONN_STRING")
 	pool, err := db.NewPool(ctx, conn_string)
 	if err != nil {
+		log.Error("failed to create database pool", "error", err,
+			"stack", string(debug.Stack()))
 		panic(err)
 	}
 	validator := validator.New()
-	userRepo := repopostgres.NewUserRepository(pool)
+	cacheStore := cache.NewNoopCache()
+	if redisURL := os.Getenv("REDIS_URL"); redisURL != "" {
+		if redisCache, cacheErr := cache.NewRedisCache(redisURL); cacheErr != nil {
+			log.Warn("redis cache unavailable, fallback to noop cache", "error", cacheErr)
+		} else {
+			cacheStore = redisCache
+			log.Info("redis cache initialized")
+		}
+	}
+
+	userRepo := repopostgres.NewUserRepository(pool, cacheStore)
 	sessionRepo := repopostgres.NewSessionRepository(pool)
 	totpRepo := repopostgres.NewTOTPRepository(pool)
 	cfg := config.AuthConfig{
@@ -46,7 +62,8 @@ func main() {
 	passwResetRepo := repopostgres.NewPasswordResetRepository(pool)
 	emailService, err := service.NewEmailService(cfg.Email)
 	if err != nil {
-		log.Fatal(err)
+		log.Error("failed to create email service", "error", err,
+			"stack", string(debug.Stack()))
 	}
 	userService := service.NewUserService(userRepo, sessionRepo, totpRepo, passwResetRepo, emailService, cfg, txManager, validator)
 	userHandler := myhttp.NewUserHandler(userService)
@@ -66,14 +83,16 @@ func main() {
 
 	s, err := gocron.NewScheduler()
 	if err != nil {
-		log.Fatalf("cannot create scheduler: %v", err)
+		log.Error("cannot create scheduler: %v", "error", err,
+			"stack", string(debug.Stack()))
 	}
 	s.NewJob(
 		gocron.DailyJob(1, gocron.NewAtTimes(gocron.NewAtTime(3, 0, 0))), // Каждый день в 3:00
 		gocron.NewTask(func() {
 			err := sessionRepo.CleanupExpiredSessions(context.Background())
 			if err != nil {
-				log.Println("cleanup error:", err)
+				log.Error("cleanup error:", "error", err,
+					"stack", string(debug.Stack()))
 			}
 		}),
 	)
@@ -81,9 +100,11 @@ func main() {
 
 	// Создаём HTTP сервер
 	handler := server.NewServer(userHandler, workoutHandler, metricsHandler, dailyMetricsHandler)
+	// Оборачиваем в middleware, чтобы в каждом запросе был логгер с request_id и т.д.
+	loggedHandler := middleware.LogMiddleware(log)(handler)
 	httpServer := &http.Server{
 		Addr:         ":8080",
-		Handler:      handler,
+		Handler:      loggedHandler,
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 15 * time.Second,
 		IdleTimeout:  60 * time.Second,
@@ -91,9 +112,11 @@ func main() {
 
 	// Запускаем сервер в горутине
 	go func() {
-		log.Printf("starting server on %s", httpServer.Addr)
+		msg := fmt.Sprintf("starting server on %s", httpServer.Addr)
+		log.Info(msg)
 		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("server listen error: %v", err)
+			log.Error("server listen error: %v", "error", err,
+				"stack", string(debug.Stack()))
 		}
 	}()
 
@@ -101,23 +124,25 @@ func main() {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	sig := <-quit
-	log.Printf("received signal: %v, initiating graceful shutdown...", sig)
+	log.Info("received shutdown signal", "signal", sig)
 
 	// Graceful shutdown с таймаутом 30 сек
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
 	if err := httpServer.Shutdown(shutdownCtx); err != nil {
-		log.Printf("HTTP server shutdown error: %v", err)
+		log.Error("HTTP server shutdown error", "error", err,
+			"stack", string(debug.Stack()))
 	} else {
-		log.Println("HTTP server shutdown successfully")
+		log.Info("HTTP server shutdown successfully")
 	}
 
 	if err := s.Shutdown(); err != nil {
-		log.Printf("scheduler shutdown error: %v", err)
+		log.Error("scheduler shutdown error", "error", err,
+			"stack", string(debug.Stack()))
 	} else {
-		log.Println("scheduler shut down successfully")
+		log.Info("scheduler shut down successfully")
 	}
 
-	log.Println("application stopped")
+	log.Info("application stopped")
 }

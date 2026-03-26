@@ -3,6 +3,7 @@ package http
 import (
 	"SmartRun/internal/auth"
 	"SmartRun/internal/dto"
+	"SmartRun/internal/logger"
 	"SmartRun/internal/model"
 	"SmartRun/internal/usecase/service"
 	"SmartRun/pkg/my_errors"
@@ -65,14 +66,17 @@ func parseDateYMD(raw string) (time.Time, error) {
 }
 
 func (h *DailyMetricHandler) CreateDailyMetric(w http.ResponseWriter, r *http.Request) {
+	log := logger.FromContext(r.Context())
 	userID, ok := auth.GetUserID(r.Context())
 	if !ok {
+		log.Warn("daily-metrics/create: unauthorized")
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
 
 	var req dto.CreateDailyMetricRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.Warn("daily-metrics/create: invalid body", "error", err)
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
@@ -81,6 +85,7 @@ func (h *DailyMetricHandler) CreateDailyMetric(w http.ResponseWriter, r *http.Re
 	if req.Date != "" {
 		parsedDate, err := parseDateYMD(req.Date)
 		if err != nil {
+			log.Warn("daily-metrics/create: invalid date", "value", req.Date, "error", err)
 			http.Error(w, "invalid date format, expected YYYY-MM-DD", http.StatusBadRequest)
 			return
 		}
@@ -98,9 +103,11 @@ func (h *DailyMetricHandler) CreateDailyMetric(w http.ResponseWriter, r *http.Re
 	createdMetric, err := h.service.CreateDailyMetric(r.Context(), dailyMetric)
 	if err != nil {
 		if errors.Is(err, my_errors.ErrDailyMetricAlreadyExists) {
+			log.Warn("daily-metrics/create: already exists", "user_id", userID, "date", req.Date)
 			http.Error(w, err.Error(), http.StatusConflict)
 			return
 		}
+		log.Error("daily-metrics/create: service failed", "error", err, "user_id", userID)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
@@ -114,8 +121,10 @@ func (h *DailyMetricHandler) CreateDailyMetric(w http.ResponseWriter, r *http.Re
 }
 
 func (h *DailyMetricHandler) GetDailyMetrics(w http.ResponseWriter, r *http.Request) {
+	log := logger.FromContext(r.Context())
 	userID, ok := auth.GetUserID(r.Context())
 	if !ok {
+		log.Warn("daily-metrics/get-all: unauthorized")
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -123,9 +132,11 @@ func (h *DailyMetricHandler) GetDailyMetrics(w http.ResponseWriter, r *http.Requ
 	metrics, err := h.service.GetAllDailyMetrics(r.Context(), userID)
 	if err != nil {
 		if errors.Is(err, my_errors.ErrDailyMetricNotFound) {
+			log.Warn("daily-metrics/get-all: not found", "user_id", userID)
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
+		log.Error("daily-metrics/get-all: service failed", "error", err, "user_id", userID)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
@@ -144,6 +155,7 @@ func (h *DailyMetricHandler) GetDailyMetrics(w http.ResponseWriter, r *http.Requ
 }
 
 func (h *DailyMetricHandler) GetDailyMetricByID(w http.ResponseWriter, r *http.Request) {
+	log := logger.FromContext(r.Context())
 	idStr := chi.URLParam(r, "id")
 	if idStr == "" {
 		// Backward compatibility for old clients using query-param style.
@@ -151,6 +163,7 @@ func (h *DailyMetricHandler) GetDailyMetricByID(w http.ResponseWriter, r *http.R
 	}
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
+		log.Warn("daily-metrics/get-by-id: invalid id", "value", idStr, "error", err)
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
@@ -158,9 +171,11 @@ func (h *DailyMetricHandler) GetDailyMetricByID(w http.ResponseWriter, r *http.R
 	metric, err := h.service.GetDailyMetricByID(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, my_errors.ErrDailyMetricNotFound) {
+			log.Warn("daily-metrics/get-by-id: not found", "id", id)
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
+		log.Error("daily-metrics/get-by-id: service failed", "id", id, "error", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
@@ -173,8 +188,10 @@ func (h *DailyMetricHandler) GetDailyMetricByID(w http.ResponseWriter, r *http.R
 }
 
 func (h *DailyMetricHandler) UpdateDailyMetric(w http.ResponseWriter, r *http.Request) {
+	log := logger.FromContext(r.Context())
 	userID, ok := auth.GetUserID(r.Context())
 	if !ok {
+		log.Warn("daily-metrics/update: unauthorized")
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -182,6 +199,7 @@ func (h *DailyMetricHandler) UpdateDailyMetric(w http.ResponseWriter, r *http.Re
 	var req dto.UpdateDailyMetricRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.Warn("daily-metrics/update: invalid body", "error", err)
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
@@ -191,9 +209,11 @@ func (h *DailyMetricHandler) UpdateDailyMetric(w http.ResponseWriter, r *http.Re
 	updatedMetric, err := h.service.UpdateDailyMetric(r.Context(), req)
 	if err != nil {
 		if errors.Is(err, my_errors.ErrDailyMetricNotFound) {
+			log.Warn("daily-metrics/update: not found", "id", req.ID)
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
+		log.Error("daily-metrics/update: service failed", "id", req.ID, "error", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
@@ -205,6 +225,7 @@ func (h *DailyMetricHandler) UpdateDailyMetric(w http.ResponseWriter, r *http.Re
 }
 
 func (h *DailyMetricHandler) DeleteDailyMetric(w http.ResponseWriter, r *http.Request) {
+	log := logger.FromContext(r.Context())
 	idStr := chi.URLParam(r, "id")
 	if idStr == "" {
 		// Backward compatibility for old clients using query-param style.
@@ -212,6 +233,7 @@ func (h *DailyMetricHandler) DeleteDailyMetric(w http.ResponseWriter, r *http.Re
 	}
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
+		log.Warn("daily-metrics/delete: invalid id", "value", idStr, "error", err)
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
@@ -219,9 +241,11 @@ func (h *DailyMetricHandler) DeleteDailyMetric(w http.ResponseWriter, r *http.Re
 	err = h.service.DeleteDailyMetric(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, my_errors.ErrDailyMetricNotFound) {
+			log.Warn("daily-metrics/delete: not found", "id", id)
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
+		log.Error("daily-metrics/delete: service failed", "id", id, "error", err)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}

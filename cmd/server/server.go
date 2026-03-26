@@ -72,6 +72,8 @@ func NewServer(userHandler *myhttp.UserHandler,
 		r.Group(func(r chi.Router) {
 			r.Use(auth.JWT)
 			r.With(userLimiter).Get("/me", userHandler.Me)
+			r.With(userLimiter).Patch("/me", userHandler.UpdateMe)
+			r.With(userLimiter).Put("/me", userHandler.UpdateMe)
 			r.Post("/enable-2fa", userHandler.Enable2FA)
 
 			r.With(userLimiter).Post("/workouts", workoutHandler.Create)
@@ -84,9 +86,9 @@ func NewServer(userHandler *myhttp.UserHandler,
 
 			r.With(userLimiter).Get("/metrics", metricsHandler.GetMetrics)
 			r.With(userLimiter).Post("/metrics", metricsHandler.CreateMetrics)
-			r.With(userLimiter).Delete("/metrics", metricsHandler.DeleteMetrics)
-			r.With(userLimiter).Get("/metrics", metricsHandler.GetStoredMetrics)
-			r.With(userLimiter).Put("/metrics", metricsHandler.UpdateMetrics)
+			r.With(userLimiter).Delete("/metrics/{id}", metricsHandler.DeleteMetrics)
+			r.With(userLimiter).Get("/metrics/stored", metricsHandler.GetStoredMetrics)
+			r.With(userLimiter).Put("/metrics/{id}", metricsHandler.UpdateMetrics)
 
 			r.With(userLimiter).Get("/daily-metrics", dailyMetricsHandler.GetDailyMetrics)
 			r.With(userLimiter).Post("/daily-metrics", dailyMetricsHandler.CreateDailyMetric)

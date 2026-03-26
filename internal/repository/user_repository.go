@@ -1,4 +1,4 @@
-package repository
+﻿package repository
 
 import (
 	"SmartRun/internal/model"
@@ -11,4 +11,6 @@ type UserRepository interface {
 	GetUserByID(ctx context.Context, id int64) (*model.User, error)
 	GetEmailByID(ctx context.Context, id int64) (string, error)
 	UpdatePassword(ctx context.Context, userID int64, newHash string) error
+	UpdateUser(ctx context.Context, user *model.User) error
+	InvalidateUserCache(ctx context.Context, userID int64, email string)
 }

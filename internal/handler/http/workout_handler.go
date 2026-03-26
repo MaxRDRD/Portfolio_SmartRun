@@ -3,6 +3,7 @@ package http
 import (
 	"SmartRun/internal/auth"
 	"SmartRun/internal/dto"
+	"SmartRun/internal/logger"
 	"SmartRun/internal/mapper"
 	"SmartRun/internal/model"
 	"SmartRun/internal/usecase/service"
@@ -26,8 +27,10 @@ func NewWorkoutHandler(service service.WorkoutService) *WorkoutHandler {
 }
 
 func (h *WorkoutHandler) Create(w http.ResponseWriter, r *http.Request) {
+	log := logger.FromContext(r.Context())
 	userID, ok := auth.GetUserID(r.Context())
 	if !ok {
+		log.Warn("workouts/create: unauthorized")
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -45,6 +48,7 @@ func (h *WorkoutHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if strings.HasPrefix(contentType, "application/json") {
 		var req dto.CreateRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			log.Warn("workouts/create: invalid json", "error", err)
 			http.Error(w, "invalid JSON body", http.StatusBadRequest)
 			return
 		}
@@ -55,26 +59,30 @@ func (h *WorkoutHandler) Create(w http.ResponseWriter, r *http.Request) {
 		// Загрузка FIT файла как бинарного потока
 		data, err := io.ReadAll(r.Body)
 		if len(data) == 0 {
+			log.Warn("workouts/create: empty fit file")
 			http.Error(w, "empty file", http.StatusBadRequest)
 			return
 		}
 		if err != nil {
+			log.Warn("workouts/create: failed to read fit file", "error", err)
 			http.Error(w, "failed to read file", http.StatusBadRequest)
 			return
 		}
 		workout, err = h.service.UploadFit(r.Context(), userID, data)
 
 	} else {
+		log.Warn("workouts/create: unsupported content type", "content_type", contentType)
 		http.Error(w, "unsupported Content-Type: "+contentType, http.StatusUnsupportedMediaType)
 		return
 	}
 
 	if err != nil {
 		if errors.Is(err, my_errors.ErrWorkoutAlreadyExists) {
+			log.Warn("workouts/create: already exists", "user_id", userID)
 			http.Error(w, err.Error(), http.StatusConflict)
 			return
 		}
-
+		log.Error("workouts/create: service failed", "error", err, "user_id", userID)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -105,15 +113,18 @@ func (h *WorkoutHandler) Create(w http.ResponseWriter, r *http.Request) {
 */
 
 func (h *WorkoutHandler) Update(w http.ResponseWriter, r *http.Request) {
+	log := logger.FromContext(r.Context())
 	var req dto.UpdateRequest
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		log.Warn("workouts/update: invalid body", "error", err)
 		http.Error(w, "invalid body", http.StatusBadRequest)
 		return
 	}
 
 	userID, ok := auth.GetUserID(r.Context())
 	if !ok {
+		log.Warn("workouts/update: unauthorized")
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -121,6 +132,7 @@ func (h *WorkoutHandler) Update(w http.ResponseWriter, r *http.Request) {
 	idStr := chi.URLParam(r, "id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
+		log.Warn("workouts/update: invalid id", "value", idStr, "error", err)
 		http.Error(w, "invalid id", http.StatusBadRequest)
 		return
 	}
@@ -128,9 +140,11 @@ func (h *WorkoutHandler) Update(w http.ResponseWriter, r *http.Request) {
 	workout, err := h.service.Update(r.Context(), userID, id, req, isFullReplace)
 	if err != nil {
 		if errors.Is(err, my_errors.ErrWorkoutNotFound) {
+			log.Warn("workouts/update: not found", "id", id, "user_id", userID)
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
+		log.Error("workouts/update: service failed", "id", id, "user_id", userID, "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -199,8 +213,10 @@ func (h *WorkoutHandler) GetHistoryByMonth(w http.ResponseWriter, r *http.Reques
 }
 
 func (h *WorkoutHandler) GetByID(w http.ResponseWriter, r *http.Request) {
+	log := logger.FromContext(r.Context())
 	userID, ok := auth.GetUserID(r.Context())
 	if !ok {
+		log.Warn("workouts/get-by-id: unauthorized")
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -208,6 +224,7 @@ func (h *WorkoutHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	idStr := chi.URLParam(r, "id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
+		log.Warn("workouts/get-by-id: invalid id", "value", idStr, "error", err)
 		http.Error(w, "invalid id", http.StatusBadRequest)
 		return
 	}
@@ -215,9 +232,11 @@ func (h *WorkoutHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 	workout, err := h.service.GetByID(r.Context(), id, userID)
 	if err != nil {
 		if errors.Is(err, my_errors.ErrWorkoutNotFound) {
+			log.Warn("workouts/get-by-id: not found", "id", id, "user_id", userID)
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
+		log.Error("workouts/get-by-id: service failed", "id", id, "user_id", userID, "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -226,8 +245,10 @@ func (h *WorkoutHandler) GetByID(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *WorkoutHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	log := logger.FromContext(r.Context())
 	userID, ok := auth.GetUserID(r.Context())
 	if !ok {
+		log.Warn("workouts/delete: unauthorized")
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -235,6 +256,7 @@ func (h *WorkoutHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	idStr := chi.URLParam(r, "id")
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
+		log.Warn("workouts/delete: invalid id", "value", idStr, "error", err)
 		http.Error(w, "invalid id", http.StatusBadRequest)
 		return
 	}
@@ -242,9 +264,11 @@ func (h *WorkoutHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	err = h.service.Delete(r.Context(), id, userID)
 	if err != nil {
 		if errors.Is(err, my_errors.ErrWorkoutNotFound) {
+			log.Warn("workouts/delete: not found", "id", id, "user_id", userID)
 			http.Error(w, err.Error(), http.StatusNotFound)
 			return
 		}
+		log.Error("workouts/delete: service failed", "id", id, "user_id", userID, "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

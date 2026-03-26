@@ -1,9 +1,10 @@
-package service
+﻿package service
 
 import (
 	"SmartRun/internal/auth"
 	"SmartRun/internal/config"
 	"SmartRun/internal/dto"
+	appLogger "SmartRun/internal/logger"
 	"SmartRun/internal/model"
 	"SmartRun/internal/repository"
 	"SmartRun/internal/repository_impl/postgres"
@@ -11,7 +12,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 	"strings"
 
 	"time"
@@ -27,6 +27,7 @@ type AuthService interface {
 	Login(ctx context.Context, req dto.LoginRequest) (*dto.AuthResult, error)
 	Logout(ctx context.Context, refreshToken string) error
 	GetUserByID(ctx context.Context, id int64) (*dto.UserResponse, error)
+	UpdateUser(ctx context.Context, userID int64, req dto.UpdateUserRequest) (*dto.UserResponse, error)
 	GetEmailByID(ctx context.Context, id int64) (string, error)
 	VerifyTOTP(ctx context.Context, userID int64, code string) (bool, error)
 	IssueTokensAfter2FA(ctx context.Context, userID int64) (*dto.AuthResult, error)
@@ -71,10 +72,11 @@ func NewUserService(userRepo repository.UserRepository,
 }
 
 func (s *authService) Register(ctx context.Context, req dto.RegisterRequest) (*dto.AuthResult, error) {
+	log := appLogger.FromContext(ctx)
 	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
 	req.Password = strings.TrimSpace(req.Password)
 	if err := s.validate.Struct(req); err != nil {
-		log.Printf("register validate failed email=%q err=%v", req.Email, err)
+		log.Warn("auth service: register validation failed", "email", req.Email, "error", err)
 		return nil, err
 	}
 
@@ -100,7 +102,7 @@ func (s *authService) Register(ctx context.Context, req dto.RegisterRequest) (*d
 		if len(prefix) > 12 {
 			prefix = prefix[:12]
 		}
-		log.Printf("register bcrypt ok email=%q hashPrefix=%q hashLen=%d passLen=%d", req.Email, prefix, len(hp), len(req.Password))
+		log.Debug("auth service: register password hashed", "email", req.Email, "hash_prefix", prefix, "hash_len", len(hp), "password_len", len(req.Password))
 
 		user := &model.User{
 			Name:     req.Name,
@@ -171,21 +173,27 @@ func (s *authService) Register(ctx context.Context, req dto.RegisterRequest) (*d
 		return nil
 	})
 
+	if err != nil {
+		log.Error("auth service: register failed", "email", req.Email, "error", err)
+	} else if result != nil && result.User != nil {
+		log.Info("auth service: register success", "user_id", result.User.ID, "email", result.User.Email)
+	}
 	return result, err
 }
 
 func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (*dto.AuthResult, error) {
+	log := appLogger.FromContext(ctx)
 	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
 	req.Password = strings.TrimSpace(req.Password)
 	if err := s.validate.Struct(req); err != nil {
-		log.Printf("login validate failed email=%q passLen=%d err=%v", req.Email, len(req.Password), err)
+		log.Warn("auth service: login validation failed", "email", req.Email, "password_len", len(req.Password), "error", err)
 		return nil, err
 	}
 
-	log.Printf("login attempt email=%q passLen=%d", req.Email, len(req.Password))
+	log.Info("auth service: login attempt", "email", req.Email)
 	user, err := s.userRepo.GetUserByEmail(ctx, req.Email)
 	if err != nil {
-		log.Printf("login user lookup failed email=%q err=%v", req.Email, err)
+		log.Warn("auth service: login lookup failed", "email", req.Email, "error", err)
 		return nil, my_errors.ErrInvalidCredentials
 	}
 
@@ -195,9 +203,7 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (*dto.Aut
 		if len(prefix) > 12 {
 			prefix = prefix[:12]
 		}
-		log.Printf("login failed email=%q hashPrefix=%q hashLen=%d passLen=%d bcryptErr=%v",
-			req.Email, prefix, len(user.Password), len(req.Password), err,
-		)
+		log.Warn("auth service: login password mismatch", "email", req.Email, "hash_prefix", prefix, "hash_len", len(user.Password), "password_len", len(req.Password), "error", err)
 		return nil, my_errors.ErrInvalidCredentials
 	}
 
@@ -249,6 +255,11 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (*dto.Aut
 		return nil
 	})
 
+	if err != nil {
+		log.Error("auth service: login failed", "email", req.Email, "error", err)
+	} else if result != nil && result.User != nil {
+		log.Info("auth service: login success", "user_id", result.User.ID, "email", result.User.Email)
+	}
 	return result, err
 
 }
@@ -257,6 +268,85 @@ func (s *authService) GetUserByID(ctx context.Context, id int64) (*dto.UserRespo
 	user, err := s.userRepo.GetUserByID(ctx, id)
 	if err != nil {
 		return nil, err
+	}
+
+	return &dto.UserResponse{
+		ID:            user.ID,
+		Email:         user.Email,
+		Name:          user.Name,
+		Gender:        user.Gender,
+		Age:           user.Age,
+		WeightKg:      user.WeightKg,
+		HeightCm:      user.HeightCm,
+		RestingHR:     user.RestingHR,
+		MaxHR:         user.MaxHR,
+		WeeklyRuns:    user.WeeklyRuns,
+		ThresholdPace: user.ThresholdPace,
+	}, nil
+}
+
+func (s *authService) UpdateUser(ctx context.Context, userID int64, req dto.UpdateUserRequest) (*dto.UserResponse, error) {
+	if err := s.validate.Struct(req); err != nil {
+		return nil, err
+	}
+
+	user, err := s.userRepo.GetUserByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	oldEmail := user.Email
+
+	if req.Name != nil {
+		user.Name = strings.TrimSpace(*req.Name)
+	}
+	if req.Email != nil {
+		newEmail := strings.ToLower(strings.TrimSpace(*req.Email))
+		if newEmail == "" {
+			return nil, fmt.Errorf("email cannot be empty")
+		}
+		if newEmail != oldEmail {
+			existing, getErr := s.userRepo.GetUserByEmail(ctx, newEmail)
+			if getErr == nil && existing.ID != userID {
+				return nil, my_errors.ErrUserAlreadyExists
+			}
+			if getErr != nil && !errors.Is(getErr, my_errors.ErrUserNotFound) {
+				return nil, getErr
+			}
+		}
+		user.Email = newEmail
+	}
+	if req.Gender != nil {
+		user.Gender = strings.ToLower(strings.TrimSpace(*req.Gender))
+	}
+	if req.Age != nil {
+		user.Age = *req.Age
+	}
+	if req.WeightKg != nil {
+		user.WeightKg = *req.WeightKg
+	}
+	if req.HeightCm != nil {
+		user.HeightCm = *req.HeightCm
+	}
+	if req.RestingHR != nil {
+		user.RestingHR = *req.RestingHR
+	}
+	if req.MaxHR != nil {
+		user.MaxHR = *req.MaxHR
+	}
+	if req.WeeklyRuns != nil {
+		user.WeeklyRuns = *req.WeeklyRuns
+	}
+	if req.ThresholdPace != nil {
+		user.ThresholdPace = *req.ThresholdPace
+	}
+
+	if err := s.userRepo.UpdateUser(ctx, user); err != nil {
+		return nil, err
+	}
+
+	s.userRepo.InvalidateUserCache(ctx, userID, oldEmail)
+	if user.Email != oldEmail {
+		s.userRepo.InvalidateUserCache(ctx, userID, user.Email)
 	}
 
 	return &dto.UserResponse{
@@ -472,7 +562,12 @@ func (s *authService) ValidateResetToken(ctx context.Context, token string) (int
 }
 
 func (s *authService) PerformPasswordReset(ctx context.Context, userID int64, newPassword string, resetToken string) error {
-	return s.txManager.WithTransaction(ctx, func(ctx context.Context) error {
+	user, err := s.userRepo.GetUserByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+
+	err = s.txManager.WithTransaction(ctx, func(ctx context.Context) error {
 		hash := auth.HashToken(resetToken)
 
 		uid, used, err := s.passwordResetRepo.FindResetByTokenHash(ctx, hash)
@@ -499,6 +594,12 @@ func (s *authService) PerformPasswordReset(ctx context.Context, userID int64, ne
 		// Опционально, но рекомендуется
 		return s.sessionRepo.DeleteAllSessionsForUser(ctx, userID)
 	})
+	if err != nil {
+		return err
+	}
+
+	s.userRepo.InvalidateUserCache(ctx, userID, user.Email)
+	return nil
 }
 
 // GetSessionByHash — вспомогательный метод для Verify2FA (получить сессию по хешу refresh token)
