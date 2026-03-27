@@ -74,7 +74,7 @@ func main() {
 	workoutService := service.NewWorkoutService(workoutRepo, dailyMetricsRepo, userRepo, parser, validator, txManager)
 	workoutHandler := myhttp.NewWorkoutHandler(workoutService)
 
-	metricsRepo := repopostgres.NewMetricsRepository(pool)
+	metricsRepo := repopostgres.NewMetricsRepository(pool, cacheStore)
 	metricsService := service.NewMetricsService(metricsRepo, validator)
 	metricsHandler := myhttp.NewMetricHandler(metricsService)
 

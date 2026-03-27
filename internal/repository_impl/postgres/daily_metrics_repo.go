@@ -9,6 +9,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -56,6 +57,11 @@ func (r *DailyMetricRepo) Create(ctx context.Context, dailyMetric model.DailyMet
 	).Scan(&dailyMetric.ID)
 
 	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			log.Warn("daily metrics repo: create duplicate", "user_id", dailyMetric.UserID, "date", dailyMetric.Date.Format("2006-01-02"), "constraint", pgErr.ConstraintName)
+			return nil, my_errors.ErrDailyMetricAlreadyExists
+		}
 		log.Error("daily metrics repo: create failed", "user_id", dailyMetric.UserID, "date", dailyMetric.Date.Format("2006-01-02"), "error", err)
 		return nil, err
 	}
