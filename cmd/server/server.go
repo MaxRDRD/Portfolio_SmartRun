@@ -2,10 +2,13 @@ package server
 
 import (
 	myhttp "SmartRun/internal/handler/http"
+	"SmartRun/internal/logger"
 	my_middleware "SmartRun/internal/middleware/auth"
 	ratelimit "SmartRun/internal/middleware/ratelimit"
+	"context"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -46,7 +49,9 @@ var (
 func NewServer(userHandler *myhttp.UserHandler,
 	workoutHandler *myhttp.WorkoutHandler,
 	metricsHandler *myhttp.MetricHandler,
-	dailyMetricsHandler *myhttp.DailyMetricHandler) http.Handler {
+	dailyMetricsHandler *myhttp.DailyMetricHandler,
+	ctx context.Context) http.Handler {
+	log := logger.FromContext(ctx)
 	r := chi.NewRouter()
 
 	r.Use(middleware.RequestID)
@@ -57,6 +62,23 @@ func NewServer(userHandler *myhttp.UserHandler,
 
 	secret := os.Getenv("JWT_SECRET")
 	auth := my_middleware.NewAuthMiddleware(secret)
+
+	// Serve existing frontend static files from ui/static.
+	staticFS := http.FileServer(http.Dir("ui/static"))
+	r.Handle("/static/*", http.StripPrefix("/static/", staticFS))
+
+	// Basic frontend routes.
+	r.Get("/", serveFrontendIndex)
+	r.Get("/dashboard", serveFrontendDashboard)
+	r.Get("/workouts", serveFrontendWorkouts)
+	r.Get("/workouts/{id}", serveFrontendWorkoutDetails)
+	r.Get("/metrics/analytics", serveFrontendMetricsAnalytics)
+	r.Get("/daily-metrics", serveFrontendDailyMetrics)
+	r.Get("/metrics/stored", serveFrontendStoredMetrics)
+	r.Get("/login", serveFrontendLogin)
+	r.Get("/signup", serveFrontendSignup)
+	r.Get("/profile", serveFrontendProfile)
+	r.Get("/about", serveFrontendIndex)
 
 	r.Route("/api", func(r chi.Router) {
 
@@ -74,6 +96,7 @@ func NewServer(userHandler *myhttp.UserHandler,
 			r.With(userLimiter).Get("/me", userHandler.Me)
 			r.With(userLimiter).Patch("/me", userHandler.UpdateMe)
 			r.With(userLimiter).Put("/me", userHandler.UpdateMe)
+			r.With(userLimiter).Post("/logout", userHandler.Logout)
 			r.Post("/enable-2fa", userHandler.Enable2FA)
 
 			r.With(userLimiter).Post("/workouts", workoutHandler.Create)
@@ -98,5 +121,55 @@ func NewServer(userHandler *myhttp.UserHandler,
 		})
 	})
 
+	// Frontend fallback for routes that are not API/static.
+	r.NotFound(func(w http.ResponseWriter, req *http.Request) {
+		if strings.HasPrefix(req.URL.Path, "/api/") || strings.HasPrefix(req.URL.Path, "/static/") {
+			log.Warn("not found", "path", req.URL.Path)
+			http.NotFound(w, req)
+			return
+		}
+		serveFrontendIndex(w, req)
+	})
+
 	return r
+}
+
+func serveFrontendIndex(w http.ResponseWriter, r *http.Request) {
+	http.ServeFile(w, r, "ui/templates/index.html")
+}
+
+func serveFrontendDashboard(w http.ResponseWriter, r *http.Request) {
+	http.ServeFile(w, r, "ui/templates/dashboard.html")
+}
+
+func serveFrontendWorkouts(w http.ResponseWriter, r *http.Request) {
+	http.ServeFile(w, r, "ui/templates/workouts.html")
+}
+
+func serveFrontendMetricsAnalytics(w http.ResponseWriter, r *http.Request) {
+	http.ServeFile(w, r, "ui/templates/metrics_analytics.html")
+}
+
+func serveFrontendDailyMetrics(w http.ResponseWriter, r *http.Request) {
+	http.ServeFile(w, r, "ui/templates/daily_metrics.html")
+}
+
+func serveFrontendStoredMetrics(w http.ResponseWriter, r *http.Request) {
+	http.ServeFile(w, r, "ui/templates/metrics_stored.html")
+}
+
+func serveFrontendWorkoutDetails(w http.ResponseWriter, r *http.Request) {
+	http.ServeFile(w, r, "ui/templates/workouts.html")
+}
+
+func serveFrontendLogin(w http.ResponseWriter, r *http.Request) {
+	http.ServeFile(w, r, "ui/templates/login.html")
+}
+
+func serveFrontendSignup(w http.ResponseWriter, r *http.Request) {
+	http.ServeFile(w, r, "ui/templates/signup.html")
+}
+
+func serveFrontendProfile(w http.ResponseWriter, r *http.Request) {
+	http.ServeFile(w, r, "ui/templates/profile.html")
 }

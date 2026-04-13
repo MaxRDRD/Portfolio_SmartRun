@@ -6,11 +6,14 @@ import (
 	"SmartRun/internal/logger"
 	"SmartRun/internal/model"
 	"SmartRun/internal/repository"
+	"SmartRun/pkg/my_errors"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -184,7 +187,7 @@ func (r *metricsRepository) GetAllMetricsByID(ctx context.Context, filter dto.Me
 				return &m, nil
 			}
 		}
-	sqlQuery := `
+		sqlQuery := `
 	SELECT id, user_id, total_workouts, total_distance, total_duration,
 	avg_pace, from_date, to_date, total_calories
 	FROM metrics
@@ -207,6 +210,10 @@ func (r *metricsRepository) GetAllMetricsByID(ctx context.Context, filter dto.Me
 			&metrics.TotalCalories,
 		)
 		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				log.Warn("metrics repo: stored metrics not found", "user_id", filter.UserID)
+				return nil, my_errors.ErrMetricNotFound
+			}
 			log.Error("metrics repo: query stored failed", "user_id", filter.UserID, "error", err)
 			return nil, fmt.Errorf("query metrics: %w", err)
 		}

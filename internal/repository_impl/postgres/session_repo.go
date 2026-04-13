@@ -47,6 +47,45 @@ func (r *sessionRepository) DeleteSessionByHash(ctx context.Context, hash string
 	return nil
 }
 
+// ConsumeSessionByHash атомарно удаляет валидную сессию и возвращает user_id.
+// 
+// КРИТИЧНО для защиты от race condition при одновременных refresh запросах:
+// - Проверяет: токен существует, не отозван, не истёк
+// - Удаляет токен в одной SQL операции
+// - Возвращает user_id только если успешно удалил
+// - Если токен уже удалён другим запросом → ErrTokenNotFound
+//
+// PostgreSQL гарантирует, что DELETE вернёт МАКСИМУМ 1 строку.
+// Если две сессии пытаются ротировать одновременно:
+//   - Первый DELETE успешен → получает user_id
+//   - Второй DELETE: 0 строк затронуто → ErrTokenNotFound (из pgx.ErrNoRows)
+//
+// Используется только в: Refresh (с ротацией токена)
+func (r *sessionRepository) ConsumeSessionByHash(ctx context.Context, hash string) (int64, error) {
+	db := r.getDB(ctx)
+
+	// Одна атомарная операция: найти + проверить + удалить + вернуть ID
+	query := `
+        DELETE FROM sessions
+        WHERE refresh_hash = $1
+          AND expires_at > NOW()
+          AND revoked = false
+        RETURNING user_id
+    `
+
+	var userID int64
+	err := db.QueryRow(ctx, query, hash).Scan(&userID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			// Нет такого токена, или он уже истёк, или отозван, или удалён другим запросом
+			return 0, my_errors.ErrTokenNotFound
+		}
+		return 0, fmt.Errorf("failed to consume session: %w", err)
+	}
+
+	return userID, nil
+}
+
 /*
 id          UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id     BIGINT        NOT NULL REFERENCES users ON DELETE CASCADE,

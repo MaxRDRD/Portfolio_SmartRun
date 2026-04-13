@@ -3,6 +3,7 @@ package service
 import (
 	"SmartRun/internal/calculate"
 	"SmartRun/internal/dto"
+	"SmartRun/internal/logger"
 	"SmartRun/internal/model"
 	"SmartRun/internal/ports/outgoing/importer"
 	"SmartRun/internal/repository"
@@ -34,6 +35,8 @@ type workoutService struct {
 	validate         *validator.Validate
 	txManager        repository.TxManager
 }
+
+var minReasonableWorkoutDate = time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC)
 
 func NewWorkoutService(workoutRepo repository.WorkoutRepository,
 	dailyMetricsRepo repository.DailyMetricRepository,
@@ -71,6 +74,9 @@ func (s *workoutService) Create(ctx context.Context, userID int64, req dto.Creat
 
 	if err != nil {
 		return nil, my_errors.ErrInvalidData
+	}
+	if parsedDate.Before(minReasonableWorkoutDate) {
+		return nil, errors.New("date must be on or after 1970-01-01")
 	}
 
 	var workout *model.Workouts
@@ -193,6 +199,9 @@ func (s *workoutService) Update(ctx context.Context, userID, id int64, req dto.U
 	}
 	// PATCH обновляет только пришедшие non-empty поля
 	validupdate.ApplyUpdateRequest(workout, req)
+	if workout.Date.Before(minReasonableWorkoutDate) {
+		return nil, errors.New("date must be on or after 1970-01-01")
+	}
 
 	// 4. Пересчитываем ВСЕ производные метрики на основе актуального состояния
 	calculate.CalculateDerivedMetrics(workout, user)
@@ -261,6 +270,9 @@ func (s *workoutService) UploadFit(ctx context.Context, userID int64, fileData [
 	if err != nil {
 		return nil, fmt.Errorf("parse FIT: %w", err)
 	}
+	if activityData.StartTime.Before(minReasonableWorkoutDate) {
+		return nil, errors.New("date must be on or after 1970-01-01")
+	}
 	var workout *model.Workouts
 	err = s.txManager.WithTransaction(ctx, func(ctx context.Context) error {
 		workout = &model.Workouts{
@@ -297,13 +309,23 @@ func (s *workoutService) UploadFit(ctx context.Context, userID int64, fileData [
 			return err
 		}
 
-		// Пересчитать daily metrics для дня этой новой тренировки
-		if err := s.recalculateDailyMetricsForDate(ctx, userID, workout.Date); err != nil {
-			return fmt.Errorf("recalculate daily metrics: %w", err)
-		}
-
 		return nil
 	})
+	if err != nil {
+		return nil, fmt.Errorf("upload FIT: %w", err)
+	}
+	if workout == nil || workout.ID <= 0 {
+		return nil, fmt.Errorf("upload FIT: workout was not persisted")
+	}
+
+	// Пересчет daily metrics не должен откатывать уже сохраненную тренировку.
+	if recalcErr := s.recalculateDailyMetricsForDate(ctx, userID, workout.Date); recalcErr != nil {
+		logger.FromContext(ctx).Warn("workouts/upload-fit: daily metrics recalculation failed",
+			"user_id", userID,
+			"workout_id", workout.ID,
+			"error", recalcErr,
+		)
+	}
 	return workout, nil
 }
 
@@ -312,12 +334,13 @@ func (s *workoutService) UploadFit(ctx context.Context, userID int64, fileData [
 func (s *workoutService) recalculateDailyMetricsForDate(ctx context.Context, userID int64, date time.Time) error {
 	// Нормализуем дату (убираем время)
 	normalizedDate := time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, date.Location())
+	dayEnd := normalizedDate.AddDate(0, 0, 1).Add(-time.Nanosecond)
 
 	// Получить все тренировки этого дня
 	filter := dto.WorkoutFilter{
 		UserID: userID,
 		From:   &normalizedDate,
-		To:     &normalizedDate,
+		To:     &dayEnd,
 	}
 	workouts, err := s.workoutRepo.GetAllByUserID(ctx, filter)
 	if err != nil && !errors.Is(err, my_errors.ErrWorkoutNotFound) {

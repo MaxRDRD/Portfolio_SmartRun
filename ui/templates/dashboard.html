@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SmartRun - Dashboard</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body data-protected="true" data-page="dashboard">
+  <div class="page-shell">
+    <header class="header">
+      <div class="container nav-row">
+        <div class="nav-left">
+          <a class="brand" href="/dashboard">SmartRun</a>
+          <nav class="menu" aria-label="Навигация">
+            <a href="/dashboard" aria-current="page">Dashboard</a>
+            <a href="/workouts">Тренировки</a>
+            <a href="/metrics/analytics">Аналитика</a>
+            <a href="/daily-metrics">Daily Metrics</a>
+            <a href="/metrics/stored">Снимок</a>
+            <a href="/profile">Профиль</a>
+          </nav>
+        </div>
+        <div class="nav-right">
+          <button id="theme-toggle" class="btn btn-outline stable-btn" type="button">🌙 Тема</button>
+          <div class="auth-actions" data-guest-actions>
+            <a class="btn btn-outline stable-btn" href="/login">Войти</a>
+            <a class="btn btn-primary stable-btn" href="/signup">Регистрация</a>
+          </div>
+          <div class="auth-actions hidden" data-user-actions>
+            <a class="user-chip user-chip-link" id="header-user-name" href="/profile">Профиль</a>
+            <button class="btn btn-primary stable-btn" type="button" id="logout-btn">Выйти</button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main class="app-main container">
+      <section class="panel page-head">
+        <h1 id="dashboard-title">Ваш беговой dashboard</h1>
+        <p class="muted-text">Главный экран показывает только недельную и месячную сводку. Полный диапазон и all-time открывайте в разделе «Аналитика».</p>
+      </section>
+
+      <section class="stats-grid">
+        <article class="metric-card">
+          <h3>Тренировок за 7 дней</h3>
+          <p id="stat-week-workouts" class="metric-value">0</p>
+        </article>
+        <article class="metric-card">
+          <h3>Дистанция за 7 дней, км</h3>
+          <p id="stat-week-distance" class="metric-value">0.0</p>
+        </article>
+        <article class="metric-card">
+          <h3>Тренировок за 30 дней</h3>
+          <p id="stat-month-workouts" class="metric-value">0</p>
+        </article>
+        <article class="metric-card">
+          <h3>Дистанция за 30 дней, км</h3>
+          <p id="stat-month-distance" class="metric-value">0.0</p>
+        </article>
+      </section>
+
+      <section class="page-grid">
+        <article class="panel">
+          <h2>Текущая форма</h2>
+          <div class="details-grid">
+            <div class="detail-chip">
+              <div class="detail-chip-title">Средний темп (30 дней)</div>
+              <div id="stat-month-pace" class="detail-chip-value">-</div>
+            </div>
+            <div class="detail-chip">
+              <div class="detail-chip-title">Калории (30 дней)</div>
+              <div id="stat-month-calories" class="detail-chip-value">0</div>
+            </div>
+            <div class="detail-chip">
+              <div class="detail-chip-title">Готовность</div>
+              <div id="stat-readiness" class="detail-chip-value">-</div>
+            </div>
+            <div class="detail-chip">
+              <div class="detail-chip-title">Рекомендация</div>
+              <div id="stat-recommendation" class="detail-chip-value">-</div>
+            </div>
+          </div>
+        </article>
+
+        <article class="panel">
+          <h2>Быстрые действия</h2>
+          <p class="muted-text">Полные диапазоны, ручные корректировки и снимок прогресса вынесены в отдельные экраны.</p>
+          <div class="inline-actions top-divider">
+            <a class="btn btn-outline stable-btn" href="/metrics/analytics">Открыть аналитику</a>
+            <a class="btn btn-outline stable-btn" href="/daily-metrics">Открыть daily metrics</a>
+            <a class="btn btn-outline stable-btn" href="/metrics/stored">Открыть снимок прогресса</a>
+            <a class="btn btn-outline stable-btn" href="/workouts">К тренировкам</a>
+          </div>
+        </article>
+      </section>
+    </main>
+  </div>
+
+  <script src="/static/js/theme-toggle.js" defer></script>
+  <script src="/static/js/app-shell.js" defer></script>
+  <script src="/static/js/dashboard.js" defer></script>
+
+  <div id="dashboard-onboarding" class="onboarding-overlay hidden" aria-hidden="true">
+    <div class="onboarding-card" role="dialog" aria-modal="true" aria-labelledby="onboarding-title">
+      <p class="kicker">Добро пожаловать в SmartRun</p>
+      <h2 id="onboarding-title">Ваши тренировки превращаются в понятное текущее состояние</h2>
+      <p class="muted-text">
+        Приложение автоматически пересчитывает ключевые метрики после каждого изменения тренировки и показывает,
+        как это влияет на вашу нагрузку, восстановление и готовность.
+      </p>
+
+      <div class="onboarding-points">
+        <div class="onboarding-point">
+          <strong>Динамический пересчёт</strong>
+          <p>Темп, нагрузка, эффект и recovery обновляются сразу после добавления, редактирования и импорта.</p>
+        </div>
+        <div class="onboarding-point">
+          <strong>Единая картина</strong>
+          <p>Dashboard собирает ваши тренировки, дневные метрики и текущее состояние в одном экране.</p>
+        </div>
+        <div class="onboarding-point">
+          <strong>Управление без шума</strong>
+          <p>Вы можете пропустить обзор и перейти к работе, а вернуться к нему позже по необходимости.</p>
+        </div>
+      </div>
+
+      <div class="onboarding-actions">
+        <button id="onboarding-skip" class="btn btn-outline stable-btn" type="button">Пропустить</button>
+        <button id="onboarding-start" class="btn btn-primary stable-btn" type="button">Продолжить</button>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

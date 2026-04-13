@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SmartRun - Регистрация</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body data-auth-page="true">
+  <div class="page-shell auth-page-shell">
+    <header class="header">
+      <div class="container nav-row">
+        <div class="nav-left">
+          <a class="brand" href="/">SmartRun</a>
+        </div>
+        <div class="nav-right">
+          <button id="theme-toggle" class="btn btn-outline stable-btn" type="button">🌙 Тема</button>
+          <div class="auth-actions" data-guest-actions>
+            <a class="btn btn-outline stable-btn" href="/login">Вход</a>
+            <a class="btn btn-primary stable-btn auth-link-current" href="/signup" aria-current="page">Регистрация</a>
+          </div>
+          <div class="auth-actions hidden" data-user-actions>
+            <a class="btn btn-outline stable-btn" href="/dashboard">Dashboard</a>
+            <button class="btn btn-primary stable-btn" type="button" id="logout-btn">Выйти</button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main class="page">
+      <section class="auth-card auth-card-wide">
+        <h1>Создание аккаунта</h1>
+        <p>Базовые поля обязательны. Профильные метрики ниже помогут точнее рассчитывать рекомендации.</p>
+
+        <form class="auth-form" id="signup-form" method="post" action="/api/register">
+          <div class="form-grid form-grid-2">
+            <label>
+              Имя
+              <input type="text" name="name" placeholder="Ваше имя" required>
+            </label>
+
+            <label>
+              Email
+              <input type="email" name="email" placeholder="name@example.com" required>
+            </label>
+          </div>
+
+          <label>
+            Пароль
+            <input type="password" name="password" placeholder="Минимум 8 символов" required>
+          </label>
+
+          <h2 class="section-title">Опциональные данные профиля</h2>
+
+          <div class="form-grid form-grid-3">
+            <label>
+              Пол
+              <select name="gender">
+                <option value="">Не указывать</option>
+                <option value="male">Мужчина (М)</option>
+                <option value="female">Женщина (Ж)</option>
+                <option value="other">Другое</option>
+              </select>
+            </label>
+
+            <label>
+              Возраст
+              <input type="number" name="age" min="10" max="120" placeholder="30">
+            </label>
+
+            <label>
+              Вес (кг)
+              <input type="number" step="0.1" name="weight_kg" min="25" max="350" placeholder="72.5">
+            </label>
+
+            <label>
+              Рост (см)
+              <input type="number" step="1" name="height_cm" min="100" max="250" placeholder="178">
+            </label>
+
+            <label>
+              Пульс покоя
+              <input type="number" name="resting_hr" min="30" max="120" placeholder="56">
+            </label>
+
+            <label>
+              Максимальный пульс
+              <input type="number" name="max_hr" min="120" max="240" placeholder="188">
+            </label>
+
+            <label>
+              Тренировок в неделю
+              <input type="number" name="weekly_runs" min="0" max="14" placeholder="4">
+            </label>
+
+            <label>
+              Пороговый темп (мм:сс / км)
+              <input type="text" name="threshold_pace_text" pattern="^\\d{1,2}:[0-5]\\d$" placeholder="04:30">
+            </label>
+          </div>
+
+          <button class="btn btn-primary stable-btn" type="submit">Создать аккаунт</button>
+        </form>
+
+        <p id="signup-message" class="auth-message" aria-live="polite"></p>
+
+        <div class="auth-footer">
+          Уже есть аккаунт? <a href="/login">Войти</a>
+        </div>
+      </section>
+    </main>
+  </div>
+  <script src="/static/js/theme-toggle.js" defer></script>
+  <script src="/static/js/app-shell.js" defer></script>
+  <script src="/static/js/auth/signup.js" defer></script>
+</body>
+</html>

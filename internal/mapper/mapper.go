@@ -28,12 +28,41 @@ func ToWorkoutsResponse(w *model.Workouts) dto.WorkoutsResponse {
 		SdrrHrv:                 w.SdrrHrv,
 		RmssdHrv:                w.RmssdHrv,
 		PerceivedEffort:         w.RPE, // если поле RPE int в модели
+		HRZones:                 toHRZonesResponse(w.TimeInHrZone),
 		Notes:                   w.Notes,
 		Shoes:                   w.Shoes,
 		PrimaryTrainingFocus:    w.PrimaryTrainingFocus,
 		AerobicTrainingEffect:   w.AerobicTrainingEffect,
 		AnaerobicTrainingEffect: w.AnaerobicTrainingEffect,
 	}
+}
+
+func toHRZonesResponse(zones []int) *dto.HRZonesRequest {
+	if len(zones) == 0 {
+		return nil
+	}
+
+	res := &dto.HRZonesRequest{}
+	if len(zones) > 0 {
+		res.Zone1Seconds = zones[0]
+	}
+	if len(zones) > 1 {
+		res.Zone2Seconds = zones[1]
+	}
+	if len(zones) > 2 {
+		res.Zone3Seconds = zones[2]
+	}
+	if len(zones) > 3 {
+		res.Zone4Seconds = zones[3]
+	}
+	if len(zones) > 4 {
+		res.Zone5Seconds = zones[4]
+	}
+	if len(zones) > 5 {
+		res.Zone6Seconds = zones[5]
+	}
+
+	return res
 }
 
 func ToWorkoutHistoryResponse(months []model.WorkoutMonthHistory) dto.WorkoutHistoryResponse {

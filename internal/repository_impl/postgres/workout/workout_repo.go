@@ -47,7 +47,7 @@ func (r *workoutRepository) Create(ctx context.Context, workout *model.Workouts)
         )
         RETURNING id, created_at
     `
-	return db.QueryRow(ctx, sqlQuery,
+	err := db.QueryRow(ctx, sqlQuery,
 		workout.UserID,
 		workout.Date,
 		workout.Distance,
@@ -78,6 +78,42 @@ func (r *workoutRepository) Create(ctx context.Context, workout *model.Workouts)
 		workout.PrimaryTrainingFocus,
 		workout.ElevationLoss,
 	).Scan(&workout.ID, &workout.CreatedAt)
+	if err != nil {
+		return err
+	}
+
+	if workout.ID > 0 {
+		return nil
+	}
+
+	// Safety fallback: in rare cases the caller may get zero ID despite successful insert.
+	fallbackQuery := `
+		SELECT id, created_at
+		FROM workouts
+		WHERE user_id = $1
+		  AND date = $2
+		  AND distance = $3
+		  AND duration = $4
+		  AND type_activity = $5
+		ORDER BY id DESC
+		LIMIT 1
+	`
+
+	if fbErr := db.QueryRow(ctx, fallbackQuery,
+		workout.UserID,
+		workout.Date,
+		workout.Distance,
+		workout.Duration,
+		workout.TypeActivity,
+	).Scan(&workout.ID, &workout.CreatedAt); fbErr != nil {
+		return fmt.Errorf("create workout fallback lookup: %w", fbErr)
+	}
+
+	if workout.ID <= 0 {
+		return fmt.Errorf("create workout: persisted row has invalid id")
+	}
+
+	return nil
 }
 
 func (r *workoutRepository) GetByID(ctx context.Context, id int64, userID int64) (*model.Workouts, error) {

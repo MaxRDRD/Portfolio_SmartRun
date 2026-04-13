@@ -1,6 +1,7 @@
 package http
 
 import (
+	"bytes"
 	"SmartRun/internal/auth"
 	"SmartRun/internal/dto"
 	"SmartRun/internal/logger"
@@ -54,7 +55,8 @@ func (h *WorkoutHandler) Create(w http.ResponseWriter, r *http.Request) {
 		}
 		workout, err = h.service.Create(r.Context(), userID, req)
 
-	} else if strings.HasPrefix(contentType, "application/octet-stream") ||
+	} else if contentType == "" ||
+		strings.HasPrefix(contentType, "application/octet-stream") ||
 		strings.HasPrefix(contentType, "application/vnd.garmin.fit") {
 		// Загрузка FIT файла как бинарного потока
 		data, err := io.ReadAll(r.Body)
@@ -86,10 +88,25 @@ func (h *WorkoutHandler) Create(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	if workout == nil || workout.ID <= 0 {
+		log.Error("workouts/create: success path without persisted workout id", "user_id", userID)
+		http.Error(w, "workout was not persisted", http.StatusInternalServerError)
+		return
+	}
 
+	response := mapper.ToWorkoutsResponse(workout)
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		log.Error("workouts/create: failed to encode response", "error", err, "user_id", userID, "workout_id", workout.ID)
+		http.Error(w, "failed to encode workout response", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-
-	json.NewEncoder(w).Encode(mapper.ToWorkoutsResponse(workout))
+	if _, err := w.Write(buf.Bytes()); err != nil {
+		log.Error("workouts/create: failed to write response", "error", err, "user_id", userID, "workout_id", workout.ID)
+	}
 }
 
 /*

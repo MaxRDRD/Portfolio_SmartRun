@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SmartRun - Stored Metrics Snapshot</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body data-protected="true" data-page="metrics-stored">
+  <div class="page-shell">
+    <header class="header">
+      <div class="container nav-row">
+        <div class="nav-left">
+          <a class="brand" href="/dashboard">SmartRun</a>
+          <nav class="menu" aria-label="Навигация">
+            <a href="/dashboard">Dashboard</a>
+            <a href="/workouts">Тренировки</a>
+            <a href="/metrics/analytics">Аналитика</a>
+            <a href="/daily-metrics">Daily Metrics</a>
+            <a href="/metrics/stored" aria-current="page">Снимок</a>
+            <a href="/profile">Профиль</a>
+          </nav>
+        </div>
+        <div class="nav-right">
+          <button id="theme-toggle" class="btn btn-outline stable-btn" type="button">🌙 Тема</button>
+          <div class="auth-actions" data-guest-actions>
+            <a class="btn btn-outline stable-btn" href="/login">Войти</a>
+            <a class="btn btn-primary stable-btn" href="/signup">Регистрация</a>
+          </div>
+          <div class="auth-actions hidden" data-user-actions>
+            <a class="user-chip user-chip-link" id="header-user-name" href="/profile">Профиль</a>
+            <button class="btn btn-primary stable-btn" type="button" id="logout-btn">Выйти</button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main class="app-main container">
+      <section class="panel page-head page-head-inline">
+        <div>
+          <h1>Снимок прогресса</h1>
+          <p class="muted-text">Отдельный сохраненный metrics snapshot. Можно вручную править и удалять.</p>
+        </div>
+        <div class="inline-actions">
+          <button class="btn btn-primary stable-btn" id="ms-refresh" type="button">Обновить</button>
+          <a class="btn btn-outline stable-btn" href="/metrics/analytics">Перейти к аналитике</a>
+        </div>
+      </section>
+
+      <section class="panel">
+        <p id="ms-message" class="flash" aria-live="polite"></p>
+        <div id="ms-empty" class="empty-state hidden">Снимок не найден. Создайте его из аналитики или вручную ниже.</div>
+
+        <div id="ms-summary" class="details-grid hidden">
+          <div class="detail-chip">
+            <div class="detail-chip-title">ID</div>
+            <div id="ms-id" class="detail-chip-value">-</div>
+          </div>
+          <div class="detail-chip">
+            <div class="detail-chip-title">Период</div>
+            <div id="ms-period" class="detail-chip-value">-</div>
+          </div>
+          <div class="detail-chip">
+            <div class="detail-chip-title">Тренировок</div>
+            <div id="ms-workouts" class="detail-chip-value">0</div>
+          </div>
+          <div class="detail-chip">
+            <div class="detail-chip-title">Дистанция, км</div>
+            <div id="ms-distance" class="detail-chip-value">0.0</div>
+          </div>
+          <div class="detail-chip">
+            <div class="detail-chip-title">Длительность</div>
+            <div id="ms-duration" class="detail-chip-value">0</div>
+          </div>
+          <div class="detail-chip">
+            <div class="detail-chip-title">Средний темп</div>
+            <div id="ms-pace" class="detail-chip-value">-</div>
+          </div>
+          <div class="detail-chip">
+            <div class="detail-chip-title">Калории</div>
+            <div id="ms-calories" class="detail-chip-value">0</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Редактирование snapshot</h2>
+        <form id="ms-form" class="stack-form">
+          <input type="hidden" id="ms-form-id" name="id">
+          <div class="form-grid form-grid-3">
+            <label>Период с<input name="from" id="ms-form-from" type="date" required></label>
+            <label>Период по<input name="to" id="ms-form-to" type="date" required></label>
+            <label>Тренировок<input name="total_workouts" id="ms-form-workouts" type="number" required></label>
+            <label>Дистанция, км<input name="total_distance" id="ms-form-distance" type="number" step="0.01" required></label>
+            <label>Длительность<input name="total_duration" id="ms-form-duration" type="number" required></label>
+            <label>Средний темп<input name="avg_pace" id="ms-form-pace" type="number" step="0.01" required></label>
+            <label>Калории<input name="total_calories" id="ms-form-calories" type="number" required></label>
+          </div>
+          <div class="inline-actions">
+            <button class="btn btn-primary stable-btn" id="ms-save-btn" type="submit">Сохранить snapshot</button>
+            <button class="btn btn-outline stable-btn" id="ms-delete-btn" type="button">Удалить snapshot</button>
+          </div>
+        </form>
+      </section>
+    </main>
+  </div>
+
+  <script src="/static/js/theme-toggle.js" defer></script>
+  <script src="/static/js/app-shell.js" defer></script>
+  <script src="/static/js/metrics-stored.js" defer></script>
+</body>
+</html>

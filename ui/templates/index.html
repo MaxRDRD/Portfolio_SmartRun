@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SmartRun - Беговой помощник</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body data-page="landing">
+  <div class="page-shell">
+    <header class="header">
+      <div class="container nav-row">
+        <div class="nav-left">
+          <a class="brand" href="/">SmartRun</a>
+          <nav class="menu" aria-label="Навигация">
+            <a href="/" aria-current="page">Главная</a>
+            <a href="/dashboard">Dashboard</a>
+            <a href="/workouts">Тренировки</a>
+            <a href="/profile">Профиль</a>
+          </nav>
+        </div>
+        <div class="nav-right">
+          <button id="theme-toggle" class="btn btn-outline stable-btn" type="button">🌙 Тема</button>
+          <div class="auth-actions" data-guest-actions>
+            <a class="btn btn-outline stable-btn" href="/login">Войти</a>
+            <a class="btn btn-primary stable-btn" href="/signup">Регистрация</a>
+          </div>
+          <div class="auth-actions hidden" data-user-actions>
+            <a class="btn btn-outline stable-btn" href="/dashboard">Dashboard</a>
+            <button class="btn btn-primary stable-btn" type="button" id="logout-btn">Выйти</button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main class="landing">
+      <section class="hero container">
+        <p class="kicker">Персональная беговая экосистема</p>
+        <h1>Все ключевые метрики и тренировки в одной панели</h1>
+        <p class="hero-text">
+          Аналогичный опыт тренировочного приложения: авторизация, личный dashboard,
+          отдельный раздел тренировок, профиль и безопасность аккаунта.
+        </p>
+        <div class="hero-actions">
+          <a href="/signup" class="btn btn-primary stable-btn">Начать</a>
+          <a href="/dashboard" class="btn btn-outline stable-btn">Открыть Dashboard</a>
+        </div>
+      </section>
+
+      <section class="container feature-grid">
+        <article class="feature-card">
+          <h2>Dashboard</h2>
+          <p>Показывает ваши беговые метрики, статус восстановления и текущий прогресс, даже если данных пока мало.</p>
+        </article>
+        <article class="feature-card">
+          <h2>Тренировки</h2>
+          <p>Лента тренировок с удобным добавлением новых сессий через кнопку «+».</p>
+        </article>
+        <article class="feature-card">
+          <h2>Профиль и безопасность</h2>
+          <p>Редактирование профиля, TOTP и управление учётной записью в отдельном разделе.</p>
+        </article>
+      </section>
+    </main>
+
+    <footer class="footer container">
+      <span>SmartRun UI</span>
+      <span>Run smarter every day</span>
+    </footer>
+  </div>
+
+  <script src="/static/js/theme-toggle.js" defer></script>
+  <script src="/static/js/app-shell.js" defer></script>
+</body>
+</html>

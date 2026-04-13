@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SmartRun - Вход</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body data-auth-page="true">
+  <div class="page-shell auth-page-shell">
+    <header class="header">
+      <div class="container nav-row">
+        <div class="nav-left">
+          <a class="brand" href="/">SmartRun</a>
+        </div>
+        <div class="nav-right">
+          <button id="theme-toggle" class="btn btn-outline stable-btn" type="button">🌙 Тема</button>
+          <div class="auth-actions" data-guest-actions>
+            <a class="btn btn-outline stable-btn auth-link-current" href="/login" aria-current="page">Вход</a>
+            <a class="btn btn-primary stable-btn" href="/signup">Регистрация</a>
+          </div>
+          <div class="auth-actions hidden" data-user-actions>
+            <a class="btn btn-outline stable-btn" href="/dashboard">Dashboard</a>
+            <button class="btn btn-primary stable-btn" type="button" id="logout-btn">Выйти</button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main class="page">
+      <section class="auth-card">
+        <h1>Вход в SmartRun</h1>
+        <p>После входа откроется личный dashboard. Если включена 2FA, ниже появится шаг подтверждения.</p>
+
+        <form class="auth-form" id="login-form" method="post" action="/api/login">
+          <label>
+            Email
+            <input type="email" name="email" placeholder="name@example.com" required>
+          </label>
+
+          <label>
+            Пароль
+            <input type="password" name="password" placeholder="Минимум 8 символов" required>
+          </label>
+
+          <button class="btn btn-primary stable-btn" type="submit">Войти</button>
+        </form>
+
+        <form class="auth-form auth-subform" id="verify-2fa-form" novalidate>
+          <label>
+            Код 2FA
+            <input type="text" name="code" placeholder="123456" inputmode="numeric" minlength="6" maxlength="8">
+          </label>
+          <button class="btn btn-outline stable-btn" type="submit">Подтвердить 2FA</button>
+        </form>
+
+        <p id="login-message" class="auth-message" aria-live="polite"></p>
+
+        <div class="auth-footer">
+          Нет аккаунта? <a href="/signup">Создать аккаунт</a>
+        </div>
+      </section>
+    </main>
+  </div>
+  <script src="/static/js/theme-toggle.js" defer></script>
+  <script src="/static/js/app-shell.js" defer></script>
+  <script src="/static/js/auth/login.js" defer></script>
+</body>
+</html>

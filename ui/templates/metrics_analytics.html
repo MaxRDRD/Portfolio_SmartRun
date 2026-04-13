@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="light dark" />
+  <script>
+    (function () {
+      var theme = localStorage.getItem('theme');
+      var isDark = theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      var root = document.documentElement;
+      root.classList.toggle('dark', isDark);
+      root.style.colorScheme = isDark ? 'dark' : 'light';
+    })();
+  </script>
+  <title>SmartRun - Metrics Analytics</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body data-protected="true" data-page="metrics-analytics">
+  <div class="page-shell">
+    <header class="header">
+      <div class="container nav-row">
+        <div class="nav-left">
+          <a class="brand" href="/dashboard">SmartRun</a>
+          <nav class="menu" aria-label="Навигация">
+            <a href="/dashboard">Dashboard</a>
+            <a href="/workouts">Тренировки</a>
+            <a href="/metrics/analytics" aria-current="page">Аналитика</a>
+            <a href="/daily-metrics">Daily Metrics</a>
+            <a href="/metrics/stored">Снимок</a>
+            <a href="/profile">Профиль</a>
+          </nav>
+        </div>
+        <div class="nav-right">
+          <button id="theme-toggle" class="btn btn-outline stable-btn" type="button">🌙 Тема</button>
+          <div class="auth-actions" data-guest-actions>
+            <a class="btn btn-outline stable-btn" href="/login">Войти</a>
+            <a class="btn btn-primary stable-btn" href="/signup">Регистрация</a>
+          </div>
+          <div class="auth-actions hidden" data-user-actions>
+            <a class="user-chip user-chip-link" id="header-user-name" href="/profile">Профиль</a>
+            <button class="btn btn-primary stable-btn" type="button" id="logout-btn">Выйти</button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main class="app-main container">
+      <section class="panel page-head">
+        <h1>Аналитика по диапазону</h1>
+        <p class="muted-text">All-time и пользовательские интервалы вынесены в этот экран. Главный dashboard теперь показывает только короткие окна.</p>
+      </section>
+
+      <section class="panel">
+        <h2>Диапазон расчета</h2>
+        <form id="ma-range-form" class="stack-form">
+          <div class="form-grid form-grid-3">
+            <label>С даты<input id="ma-from" name="from" type="date" required></label>
+            <label>По дату<input id="ma-to" name="to" type="date" required></label>
+          </div>
+          <div class="inline-actions">
+            <button class="btn btn-primary stable-btn" type="submit">Рассчитать</button>
+            <button class="btn btn-outline stable-btn" id="ma-all-time" type="button">All-time</button>
+            <button class="btn btn-outline stable-btn" id="ma-save-snapshot" type="button">Сохранить как snapshot</button>
+            <a class="btn btn-outline stable-btn" href="/metrics/stored">Открыть snapshot</a>
+          </div>
+        </form>
+        <p id="ma-message" class="flash" aria-live="polite"></p>
+      </section>
+
+      <section class="panel">
+        <h2>Результат</h2>
+        <div id="ma-result-empty" class="empty-state">Выберите диапазон и нажмите «Рассчитать».</div>
+        <div id="ma-result" class="details-grid hidden">
+          <div class="detail-chip">
+            <div class="detail-chip-title">Период</div>
+            <div id="ma-period" class="detail-chip-value">-</div>
+          </div>
+          <div class="detail-chip">
+            <div class="detail-chip-title">Тренировок</div>
+            <div id="ma-workouts" class="detail-chip-value">0</div>
+          </div>
+          <div class="detail-chip">
+            <div class="detail-chip-title">Дистанция, км</div>
+            <div id="ma-distance" class="detail-chip-value">0.0</div>
+          </div>
+          <div class="detail-chip">
+            <div class="detail-chip-title">Длительность</div>
+            <div id="ma-duration" class="detail-chip-value">0</div>
+          </div>
+          <div class="detail-chip">
+            <div class="detail-chip-title">Средний темп</div>
+            <div id="ma-pace" class="detail-chip-value">-</div>
+          </div>
+          <div class="detail-chip">
+            <div class="detail-chip-title">Калории</div>
+            <div id="ma-calories" class="detail-chip-value">0</div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="/static/js/theme-toggle.js" defer></script>
+  <script src="/static/js/app-shell.js" defer></script>
+  <script src="/static/js/metrics-analytics.js" defer></script>
+</body>
+</html>

@@ -383,6 +383,7 @@ func (s *authService) Logout(ctx context.Context, refreshToken string) error {
 }
 
 // Refresh обновляет access-токен и выполняет ротацию refresh-токена
+// (Выдаёт новую пару access+refresh вместо старого refresh)
 func (s *authService) Refresh(ctx context.Context, refreshToken string) (*dto.AuthResult, error) {
 	if refreshToken == "" {
 		return nil, my_errors.ErrInvalidToken
@@ -390,19 +391,30 @@ func (s *authService) Refresh(ctx context.Context, refreshToken string) (*dto.Au
 
 	refreshHash := auth.HashToken(refreshToken)
 
-	session, err := s.sessionRepo.FindSessionByHash(ctx, refreshHash)
-	if err != nil {
-		return nil, err
-	}
-
 	var result *dto.AuthResult
 
-	err = s.txManager.WithTransaction(ctx, func(ctx context.Context) error {
-		if err := s.sessionRepo.DeleteSessionByHash(ctx, refreshHash); err != nil {
+	// КРИТИЧНО: все операции внутри одной транзакции для защиты от race condition!
+	//
+	// Одновременный refresh (напр., пользователь с мобилки + браузера):
+	//   Запрос A: вызвал Refresh              | Запрос B: вызвал Refresh
+	//            ↓                            |
+	//   ConsumeSessionByHash (первый)         | ConsumeSessionByHash (ждёт БД lock)
+	//            ↓                            |
+	//   CreateSession → новый refresh токен A | pgx.ErrNoRows (токен уже удалён!)
+	//            ↓                            |
+	//   Успех! Вернуть TokenA                 | Ошибка: ErrTokenNotFound
+	//
+	// Результат: ТОЛЬКО запрос A получит новый токен безопасно!
+	err := s.txManager.WithTransaction(ctx, func(ctx context.Context) error {
+		// АТОМАРНО: удалить старую сессию и получить user_id
+		// Если токен уже удалён, вернётся ErrTokenNotFound (не пройдём дальше)
+		userID, err := s.sessionRepo.ConsumeSessionByHash(ctx, refreshHash)
+		if err != nil {
 			return err
 		}
 
-		newRefresh, newSession, err := s.createSession(session.UserId)
+		// Создаём НОВУЮ сессию для этого пользователя
+		newRefresh, newSession, err := s.createSession(userID)
 		if err != nil {
 			return err
 		}
@@ -411,7 +423,8 @@ func (s *authService) Refresh(ctx context.Context, refreshToken string) (*dto.Au
 			return err
 		}
 
-		newAccess, err := auth.GenerateAccessToken(session.UserId, s.cfg.AccessTokenTTL)
+		// 3️⃣ Генерируем новый access-токен
+		newAccess, err := auth.GenerateAccessToken(userID, s.cfg.AccessTokenTTL)
 		if err != nil {
 			return err
 		}
@@ -436,8 +449,8 @@ func (s *authService) EnableTOTP(ctx context.Context, userID int64, email string
 		return "", nil, err
 	}
 
-	// Сохраняем в БД
-	err = s.totpRepo.UpdateTOTPSecret(ctx, userID, key.Secret(), true)
+	// Сохраняем секрет как pending: 2FA включится только после VerifyTOTP.
+	err = s.totpRepo.UpdateTOTPSecret(ctx, userID, key.Secret(), false)
 	if err != nil {
 		return "", nil, err
 	}
@@ -456,7 +469,16 @@ func (s *authService) VerifyTOTP(ctx context.Context, userID int64, code string)
 	if err != nil {
 		return false, err
 	}
-	return totp.Validate(code, secret), nil
+	valid := totp.Validate(code, secret)
+	if !valid {
+		return false, nil
+	}
+
+	if err := s.totpRepo.UpdateTOTPSecret(ctx, userID, secret, true); err != nil {
+		return false, err
+	}
+
+	return true, nil
 }
 
 func (s *authService) IsTOTPEnabled(ctx context.Context, userID int64) (bool, error) {
@@ -570,34 +592,39 @@ func (s *authService) PerformPasswordReset(ctx context.Context, userID int64, ne
 	err = s.txManager.WithTransaction(ctx, func(ctx context.Context) error {
 		hash := auth.HashToken(resetToken)
 
-		uid, used, err := s.passwordResetRepo.FindResetByTokenHash(ctx, hash)
-		if err != nil {
+		// КРИТИЧНО: ConsumeResetToken делает проверку + пометку в ОДНОЙ SQL операции
+		//
+		// Защита от race condition (двойного использования одного токена):
+		//   Запрос A: ConsumeResetToken ( UPDATE used=false → true) | ✓ 1 row affected
+		//            ↓                                              |
+		//            UpdatePassword (меняет пароль пользователя)    | Запрос B: ConsumeResetToken
+		//            ↓                                              |   ( UPDATE used=false → true) ✗ 0 rows!
+		//            DeleteAllSessionsForUser                       |   Возврат ErrInvalidToken
+		//                                                           |
+		// Результат: пароль изменён ОДИН раз, вторая попытка отклонена!
+		if err := s.passwordResetRepo.ConsumeResetToken(ctx, hash, userID); err != nil {
 			return err
 		}
-		if uid != userID || used {
-			return my_errors.ErrInvalidToken
-		}
 
+		// Хешируем новый пароль
 		passHash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
 		if err != nil {
 			return err
 		}
 
+		// Обновляем пароль в БД
 		if err = s.userRepo.UpdatePassword(ctx, userID, string(passHash)); err != nil {
 			return err
 		}
 
-		if err = s.passwordResetRepo.MarkAsUsed(ctx, hash); err != nil {
-			return err
-		}
-
-		// Опционально, но рекомендуется
+		// Рекомендуется: удаляем все сессии, чтобы пользователь перезалогинился с новым паролем
 		return s.sessionRepo.DeleteAllSessionsForUser(ctx, userID)
 	})
 	if err != nil {
 		return err
 	}
 
+	// Инвалидируем кеш пользователя (только если транзакция прошла успешно)
 	s.userRepo.InvalidateUserCache(ctx, userID, user.Email)
 	return nil
 }

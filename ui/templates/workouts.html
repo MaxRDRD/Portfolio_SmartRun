@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="light dark" />
+  <script>
+    (function () {
+      var theme = localStorage.getItem('theme');
+      var isDark = theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      var root = document.documentElement;
+      root.classList.toggle('dark', isDark);
+      root.style.colorScheme = isDark ? 'dark' : 'light';
+    })();
+  </script>
+  <title>SmartRun - Тренировки</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body data-protected="true" data-page="workouts">
+  <div class="page-shell">
+    <header class="header">
+      <div class="container nav-row">
+        <div class="nav-left">
+          <a class="brand" href="/dashboard">SmartRun</a>
+          <nav class="menu" aria-label="Навигация">
+            <a href="/dashboard">Dashboard</a>
+            <a href="/workouts" aria-current="page">Тренировки</a>
+            <a href="/metrics/analytics">Аналитика</a>
+            <a href="/daily-metrics">Daily Metrics</a>
+            <a href="/metrics/stored">Снимок</a>
+            <a href="/profile">Профиль</a>
+          </nav>
+        </div>
+        <div class="nav-right">
+          <button id="theme-toggle" class="btn btn-outline stable-btn" type="button">🌙 Тема</button>
+          <div class="auth-actions" data-guest-actions>
+            <a class="btn btn-outline stable-btn" href="/login">Войти</a>
+            <a class="btn btn-primary stable-btn" href="/signup">Регистрация</a>
+          </div>
+          <div class="auth-actions hidden" data-user-actions>
+            <a class="user-chip user-chip-link" id="header-user-name" href="/profile">Профиль</a>
+            <button class="btn btn-primary stable-btn" type="button" id="logout-btn">Выйти</button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main class="app-main container">
+      <section class="panel page-head page-head-inline">
+        <div>
+          <h1>Тренировки</h1>
+          <p class="muted-text">Лента ваших пробежек. Добавляйте новые тренировки через кнопку «+».</p>
+        </div>
+        <div class="inline-actions create-actions">
+          <button class="btn btn-primary stable-btn" id="create-workout-toggle" type="button">Новая тренировка</button>
+          <button class="btn btn-outline stable-btn" id="create-fit-toggle" type="button">Импорт FIT</button>
+        </div>
+      </section>
+
+      <section id="create-workout-panel" class="panel hidden">
+        <h2>Новая тренировка</h2>
+        <form id="workout-create-form" class="stack-form">
+          <div class="form-grid form-grid-3">
+            <label>Дата<input name="date" type="date" required></label>
+            <label>Дистанция (км)<input name="distance" type="number" step="0.01" required></label>
+            <label>Длительность (HH:MM:SS)<input name="duration" type="text" inputmode="numeric" placeholder="01:05:30" required></label>
+            <label>Тип активности<input name="type_activity" type="text" placeholder="run"></label>
+            <label>Средний пульс<input name="avg_hr" type="number"></label>
+            <label>Макс пульс<input name="max_hr" type="number"></label>
+            <label>Калории<input name="calories" type="number"></label>
+            <label>Каденс<input name="avg_cadence" type="number"></label>
+            <label>RPE (1-10)<input name="rpe" type="number" min="1" max="10"></label>
+          </div>
+          <label>Заметки<textarea name="notes" rows="2"></textarea></label>
+          <label>Кроссовки<input name="shoes" type="text" placeholder="Например, Pegasus"></label>
+          <div class="form-grid form-grid-3 top-divider">
+            <label>Z1 (HH:MM:SS)<input name="zone_1_seconds" type="text" inputmode="numeric" placeholder="00:12:30"></label>
+            <label>Z2 (HH:MM:SS)<input name="zone_2_seconds" type="text" inputmode="numeric" placeholder="00:20:00"></label>
+            <label>Z3 (HH:MM:SS)<input name="zone_3_seconds" type="text" inputmode="numeric" placeholder="00:15:45"></label>
+            <label>Z4 (HH:MM:SS)<input name="zone_4_seconds" type="text" inputmode="numeric" placeholder="00:10:00"></label>
+            <label>Z5 (HH:MM:SS)<input name="zone_5_seconds" type="text" inputmode="numeric" placeholder="00:05:00"></label>
+            <label>Z6 (HH:MM:SS)<input name="zone_6_seconds" type="text" inputmode="numeric" placeholder="00:00:00"></label>
+          </div>
+          <button class="btn btn-primary stable-btn" type="submit">Сохранить тренировку</button>
+        </form>
+
+      </section>
+
+      <section id="create-fit-panel" class="panel hidden">
+        <h2>Импорт FIT файла</h2>
+        <form id="workout-fit-form" class="stack-form">
+          <label>Файл FIT
+            <input type="file" name="fit_file" accept=".fit,application/octet-stream" required>
+          </label>
+          <button class="btn btn-outline stable-btn" type="submit">Импортировать FIT</button>
+        </form>
+      </section>
+
+      <section class="panel" id="workouts-months-panel">
+        <div class="panel-head-inline">
+          <h2>Тренировки по месяцам</h2>
+          <div class="inline-actions">
+            <button class="btn btn-outline stable-btn" type="button" id="workouts-open-filters">Сортировка и фильтры</button>
+            <button class="btn btn-outline stable-btn hidden" type="button" id="workouts-exit-filters">Отменить сортировку</button>
+          </div>
+        </div>
+        <p class="muted-text">Текущий месяц сверху. Разворачивайте только нужные месяцы и догружайте историю лениво.</p>
+        <p id="workouts-message" class="flash" aria-live="polite"></p>
+        <div class="inline-actions quick-filter-row">
+          <button class="btn btn-outline btn-sm chip-toggle" type="button" id="quick-filter-has-notes">Только с заметками</button>
+          <button class="btn btn-outline btn-sm chip-toggle" type="button" id="quick-filter-has-hr-zones">Только с HR зонами</button>
+          <button class="btn btn-outline btn-sm" type="button" id="quick-filter-reset">Сброс быстрых фильтров</button>
+        </div>
+
+        <div id="workouts-filter-results" class="hidden">
+          <h3 class="filter-results-title">Результаты фильтрации</h3>
+          <div id="workouts-list" class="list-block"></div>
+          <div id="workouts-empty" class="empty-state hidden">По заданным условиям тренировки не найдены.</div>
+        </div>
+
+        <div id="workouts-history-list" class="list-block"></div>
+        <div id="workouts-history-sentinel" class="history-sentinel" aria-hidden="true"></div>
+        <div class="inline-actions" id="workouts-history-actions">
+          <button class="btn btn-outline stable-btn" type="button" id="workouts-history-load-more">Загрузить ещё месяцы</button>
+        </div>
+        <div id="workouts-history-empty" class="empty-state hidden">История пока недоступна.</div>
+      </section>
+
+      <div id="workouts-filter-overlay" class="app-dialog-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="workouts-filter-title">
+        <div class="app-dialog app-dialog-lg">
+          <h3 id="workouts-filter-title" class="app-dialog-title">Сортировка и фильтры</h3>
+          <p class="app-dialog-message">Отберите тренировки по нужным критериям. Результаты откроются в отдельном списке.</p>
+
+          <form id="workouts-filter-form" class="stack-form top-divider" novalidate>
+            <div class="form-grid form-grid-3 workouts-filters-grid">
+              <label>Тип активности<input name="type" type="text" placeholder="run"></label>
+              <label>С даты<input name="from" type="date"></label>
+              <label>По дату<input name="to" type="date"></label>
+
+              <label>Дистанция от (км)<input name="min_distance" type="number" step="0.01"></label>
+              <label>Дистанция до (км)<input name="max_distance" type="number" step="0.01"></label>
+              <label>Кроссовки<input name="shoes" type="text" placeholder="Pegasus"></label>
+
+              <label>Пульс от<input name="min_avg_hr" type="number"></label>
+              <label>Пульс до<input name="max_avg_hr" type="number"></label>
+              <label>Темп от (мин/км)<input name="min_pace" type="number" step="0.01" placeholder="4.20"></label>
+
+              <label>Темп до (мин/км)<input name="max_pace" type="number" step="0.01" placeholder="5.30"></label>
+              <label>RPE от<input name="min_rpe" type="number" min="1" max="10"></label>
+              <label>RPE до<input name="max_rpe" type="number" min="1" max="10"></label>
+
+              <label>Заметки
+                <select name="has_notes">
+                  <option value="">Любые</option>
+                  <option value="true">Только с заметками</option>
+                  <option value="false">Только без заметок</option>
+                </select>
+              </label>
+              <label>HR зоны
+                <select name="has_hr_zones">
+                  <option value="">Любые</option>
+                  <option value="true">Только с зонами</option>
+                  <option value="false">Только без зон</option>
+                </select>
+              </label>
+              <label>Сортировать по
+                <select name="sort_by">
+                  <option value="date">Дате</option>
+                  <option value="distance">Дистанции</option>
+                  <option value="pace">Темпу</option>
+                  <option value="avg_hr">Пульсу</option>
+                </select>
+              </label>
+
+              <label>Порядок
+                <select name="sort_order">
+                  <option value="desc">По убыванию</option>
+                  <option value="asc">По возрастанию</option>
+                </select>
+              </label>
+              <label>Лимит
+                <select name="limit">
+                  <option value="20">20</option>
+                  <option value="50" selected>50</option>
+                  <option value="100">100</option>
+                </select>
+              </label>
+            </div>
+
+            <div class="app-dialog-actions">
+              <button class="btn btn-outline stable-btn" type="button" id="workouts-filter-cancel">Отмена</button>
+              <button class="btn btn-outline stable-btn" type="button" id="workouts-filter-reset">Сбросить</button>
+              <button class="btn btn-primary stable-btn" type="submit">Применить</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <section id="workout-details-panel" class="panel hidden">
+        <div class="panel-head-inline">
+          <h2>Детали тренировки</h2>
+          <button id="workout-details-close" class="btn btn-outline stable-btn" type="button">Закрыть</button>
+        </div>
+
+        <div id="workout-details-view" class="details-grid"></div>
+
+        <form id="workout-edit-form" class="stack-form top-divider">
+          <input id="workout-edit-id" type="hidden" name="id">
+          <div class="form-grid form-grid-3">
+            <label>Дата<input id="workout-edit-date" name="date" type="date" required></label>
+            <label>Дистанция (км)<input id="workout-edit-distance" name="distance" type="number" step="0.01" required></label>
+            <label>Длительность (HH:MM:SS)<input id="workout-edit-duration" name="duration" type="text" inputmode="numeric" placeholder="01:05:30" required></label>
+            <label>Тип активности<input id="workout-edit-type" name="type_activity" type="text" required></label>
+            <label>Средний пульс<input id="workout-edit-avg-hr" name="avg_hr" type="number"></label>
+            <label>Макс пульс<input id="workout-edit-max-hr" name="max_hr" type="number"></label>
+            <label>Калории<input id="workout-edit-calories" name="calories" type="number"></label>
+            <label>Каденс<input id="workout-edit-avg-cadence" name="avg_cadence" type="number"></label>
+            <label>Каденс max<input id="workout-edit-max-cadence" name="max_cadence" type="number"></label>
+            <label>Набор высоты (м)<input id="workout-edit-elevation-gain" name="elevation_gain" type="number" step="0.1"></label>
+            <label>Сброс высоты (м)<input id="workout-edit-elevation-loss" name="elevation_loss" type="number" step="0.1"></label>
+            <label>RPE (1-10)<input id="workout-edit-rpe" name="rpe" type="number" min="1" max="10"></label>
+          </div>
+          <label>Заметки<textarea id="workout-edit-notes" name="notes" rows="2"></textarea></label>
+          <label>Кроссовки<input id="workout-edit-shoes" name="shoes" type="text" placeholder="Например, Pegasus"></label>
+          <div class="form-grid form-grid-3 top-divider">
+            <label>Z1 (HH:MM:SS)<input id="workout-edit-zone-1" name="zone_1_seconds" type="text" inputmode="numeric" placeholder="00:12:30"></label>
+            <label>Z2 (HH:MM:SS)<input id="workout-edit-zone-2" name="zone_2_seconds" type="text" inputmode="numeric" placeholder="00:20:00"></label>
+            <label>Z3 (HH:MM:SS)<input id="workout-edit-zone-3" name="zone_3_seconds" type="text" inputmode="numeric" placeholder="00:15:45"></label>
+            <label>Z4 (HH:MM:SS)<input id="workout-edit-zone-4" name="zone_4_seconds" type="text" inputmode="numeric" placeholder="00:10:00"></label>
+            <label>Z5 (HH:MM:SS)<input id="workout-edit-zone-5" name="zone_5_seconds" type="text" inputmode="numeric" placeholder="00:05:00"></label>
+            <label>Z6 (HH:MM:SS)<input id="workout-edit-zone-6" name="zone_6_seconds" type="text" inputmode="numeric" placeholder="00:00:00"></label>
+          </div>
+
+          <div class="inline-actions">
+            <button class="btn btn-primary stable-btn" type="submit">Сохранить изменения</button>
+            <button id="workout-delete-btn" class="btn btn-outline stable-btn" type="button">Удалить тренировку</button>
+          </div>
+        </form>
+      </section>
+    </main>
+  </div>
+
+  <script src="/static/js/theme-toggle.js" defer></script>
+  <script src="/static/js/app-shell.js" defer></script>
+  <script src="/static/js/workouts.js" defer></script>
+</body>
+</html>

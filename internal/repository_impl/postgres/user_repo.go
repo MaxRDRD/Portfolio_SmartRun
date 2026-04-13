@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5"
 	"golang.org/x/sync/singleflight"
 )
@@ -65,7 +66,7 @@ func (r *userRepository) CreateUser(ctx context.Context, user *model.User) error
                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
                 RETURNING id, created_at
     `
-	return db.QueryRow(ctx, query,
+	err := db.QueryRow(ctx, query,
 		user.Name,
 		user.Email,
 		user.Password,
@@ -78,6 +79,16 @@ func (r *userRepository) CreateUser(ctx context.Context, user *model.User) error
 		user.WeeklyRuns,
 		user.ThresholdPace,
 	).Scan(&user.ID, &user.CreatedAt)
+
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			return my_errors.ErrUserAlreadyExists
+		}
+		return err
+	}
+
+	return nil
 }
 
 func (r *userRepository) GetUserByEmail(ctx context.Context, email string) (*model.User, error) {

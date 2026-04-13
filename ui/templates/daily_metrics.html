@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="light dark" />
+  <script>
+    (function () {
+      var theme = localStorage.getItem('theme');
+      var isDark = theme === 'dark' || (!theme && window.matchMedia('(prefers-color-scheme: dark)').matches);
+      var root = document.documentElement;
+      root.classList.toggle('dark', isDark);
+      root.style.colorScheme = isDark ? 'dark' : 'light';
+    })();
+  </script>
+  <title>SmartRun - Daily Metrics</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body data-protected="true" data-page="daily-metrics">
+  <div class="page-shell">
+    <header class="header">
+      <div class="container nav-row">
+        <div class="nav-left">
+          <a class="brand" href="/dashboard">SmartRun</a>
+          <nav class="menu" aria-label="Навигация">
+            <a href="/dashboard">Dashboard</a>
+            <a href="/workouts">Тренировки</a>
+            <a href="/metrics/analytics">Аналитика</a>
+            <a href="/daily-metrics" aria-current="page">Daily Metrics</a>
+            <a href="/metrics/stored">Снимок</a>
+            <a href="/profile">Профиль</a>
+          </nav>
+        </div>
+        <div class="nav-right">
+          <button id="theme-toggle" class="btn btn-outline stable-btn" type="button">🌙 Тема</button>
+          <div class="auth-actions" data-guest-actions>
+            <a class="btn btn-outline stable-btn" href="/login">Войти</a>
+            <a class="btn btn-primary stable-btn" href="/signup">Регистрация</a>
+          </div>
+          <div class="auth-actions hidden" data-user-actions>
+            <a class="user-chip user-chip-link" id="header-user-name" href="/profile">Профиль</a>
+            <button class="btn btn-primary stable-btn" type="button" id="logout-btn">Выйти</button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <main class="app-main container">
+      <section class="panel page-head page-head-inline">
+        <div>
+          <h1>Daily Metrics</h1>
+          <p class="muted-text">Просмотр и ручные корректировки ежедневных метрик восстановления и нагрузки.</p>
+        </div>
+        <button class="btn btn-primary stable-btn" id="dm-open-create" type="button">Добавить день</button>
+      </section>
+
+      <section class="panel hidden" id="dm-create-panel">
+        <h2>Новая запись</h2>
+        <form id="dm-create-form" class="stack-form">
+          <div class="form-grid form-grid-3">
+            <label>Дата<input name="date" type="date" required></label>
+            <label>Sleep Score<input name="sleep_score" type="number" min="0" max="100"></label>
+            <label>Body Battery Avg<input name="body_battery_avg" type="number" step="0.1"></label>
+            <label>Шаги<input name="steps" type="number"></label>
+          </div>
+          <div class="inline-actions">
+            <button class="btn btn-primary stable-btn" type="submit">Создать</button>
+            <button class="btn btn-outline stable-btn" type="button" id="dm-create-cancel">Отмена</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head-inline">
+          <h2>История daily metrics</h2>
+          <button class="btn btn-outline stable-btn" id="dm-refresh" type="button">Обновить</button>
+        </div>
+        <p id="dm-message" class="flash" aria-live="polite"></p>
+        <div id="dm-list" class="list-block"></div>
+        <div id="dm-empty" class="empty-state hidden">Записей пока нет.</div>
+      </section>
+
+      <section class="panel hidden" id="dm-edit-panel">
+        <div class="panel-head-inline">
+          <h2>Редактирование записи</h2>
+          <button class="btn btn-outline stable-btn" id="dm-edit-close" type="button">Закрыть</button>
+        </div>
+
+        <form id="dm-edit-form" class="stack-form">
+          <input type="hidden" name="id" id="dm-edit-id">
+          <div class="form-grid form-grid-3">
+            <label>Дата<input name="date" id="dm-edit-date" type="date" required></label>
+            <label>CTL<input name="ctl" id="dm-edit-ctl" type="number" step="0.01"></label>
+            <label>ATL<input name="atl" id="dm-edit-atl" type="number" step="0.01"></label>
+            <label>TSB<input name="tsb" id="dm-edit-tsb" type="number" step="0.01"></label>
+            <label>Fatigue Score<input name="fatigue_score" id="dm-edit-fatigue" type="number"></label>
+            <label>Readiness Score<input name="readiness_score" id="dm-edit-readiness" type="number"></label>
+            <label>Body Battery Avg<input name="body_battery_avg" id="dm-edit-body-battery" type="number" step="0.1"></label>
+            <label>Шаги<input name="steps" id="dm-edit-steps" type="number"></label>
+            <label>Total Calories<input name="total_calories" id="dm-edit-total-calories" type="number"></label>
+            <label>Sleep Score<input name="sleep_score" id="dm-edit-sleep" type="number"></label>
+            <label>Stress Avg<input name="stress_avg" id="dm-edit-stress" type="number"></label>
+            <label>Streak Days<input name="streak_days" id="dm-edit-streak" type="number"></label>
+            <label>Monotony<input name="monotony" id="dm-edit-monotony" type="number" step="0.01"></label>
+            <label>Strain<input name="strain" id="dm-edit-strain" type="number" step="0.01"></label>
+          </div>
+          <label>Recommendation<textarea name="recommendation" id="dm-edit-recommendation" rows="3"></textarea></label>
+
+          <div class="inline-actions">
+            <button class="btn btn-primary stable-btn" type="submit">Сохранить изменения</button>
+            <button class="btn btn-outline stable-btn" type="button" id="dm-delete-btn">Удалить запись</button>
+          </div>
+        </form>
+      </section>
+    </main>
+  </div>
+
+  <script src="/static/js/theme-toggle.js" defer></script>
+  <script src="/static/js/app-shell.js" defer></script>
+  <script src="/static/js/daily-metrics.js" defer></script>
+</body>
+</html>

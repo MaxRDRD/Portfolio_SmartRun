@@ -99,7 +99,11 @@ func main() {
 	s.Start()
 
 	// Создаём HTTP сервер
-	handler := server.NewServer(userHandler, workoutHandler, metricsHandler, dailyMetricsHandler)
+	handler := server.NewServer(userHandler,
+		workoutHandler,
+		metricsHandler,
+		dailyMetricsHandler,
+		ctx)
 	// Оборачиваем в middleware, чтобы в каждом запросе был логгер с request_id и т.д.
 	loggedHandler := middleware.LogMiddleware(log)(handler)
 	httpServer := &http.Server{

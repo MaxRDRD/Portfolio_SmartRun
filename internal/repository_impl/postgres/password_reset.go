@@ -71,6 +71,50 @@ func (r *passwordResetRepo) MarkAsUsed(ctx context.Context, tokenHash string) er
 	return nil
 }
 
+// ConsumeResetToken атомарно проверяет и помечает токен как использованный.
+//
+// КРИТИЧНО для защиты от race condition при двойном использовании токена:
+// - Проверяет: токен существует, ещё не использован (used=false), не истёк
+// - Проверяет: принадлежит указанному пользователю (user_id)
+// - ПОМЕЧАЕТ как использованный (used=true) в ОДНОЙ SQL операции
+// - Если условие не выполнено → ничего не меняет, возвращает ErrInvalidToken
+//
+// Если два запроса пытаются сбросить пароль с одним токеном:
+//   - Первый UPDATE: used=false → меняет на true ✓
+//   - Второй UPDATE: used=false → 0 строк! (уже true)
+//     Возвращает ErrInvalidToken → ошибка
+//
+// Используется только в: PerformPasswordReset
+func (r *passwordResetRepo) ConsumeResetToken(ctx context.Context, tokenHash string, userID int64) error {
+	db := r.getDB(ctx)
+
+	// Атомарная проверка + пометка в одной SQL операции
+	query := `
+        UPDATE password_resets
+        SET used = true
+        WHERE token_hash = $1
+          AND user_id = $2
+          AND used = false
+          AND expires_at > NOW()
+    `
+
+	tag, err := db.Exec(ctx, query, tokenHash, userID)
+	if err != nil {
+		return err
+	}
+
+	// Если 0 строк обновлено, значит:
+	// - токен не существует, ИЛИ
+	// - уже использован (used=true), ИЛИ
+	// - истёк срок, ИЛИ
+	// - не принадлежит этому пользователю
+	if tag.RowsAffected() == 0 {
+		return my_errors.ErrInvalidToken
+	}
+
+	return nil
+}
+
 func (r *passwordResetRepo) DeleteResetToken(ctx context.Context, tokenHash string) error {
 	db := r.getDB(ctx)
 

@@ -4,11 +4,15 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"math"
+	"strings"
+	"time"
 
 	"SmartRun/internal/ports/outgoing/importer"
 
 	"github.com/muktihari/fit/decoder"
 	"github.com/muktihari/fit/profile/filedef"
+	"github.com/muktihari/fit/profile/mesgdef"
 )
 
 type MuktihariFitParser struct{}
@@ -36,11 +40,23 @@ func (p *MuktihariFitParser) Parse(ctx context.Context, data []byte) (*importer.
 
 	// Заполняем ActivityData
 
+	// FIT: TotalTimerTime Scale=1000, Units=s
+	durationSec := int(session.TotalTimerTime / 1000)
+	if durationSec <= 0 {
+		return nil, fmt.Errorf("invalid duration: %d ms", session.TotalTimerTime)
+	}
+
+	// FIT: TotalDistance Scale=100, Units=m -> km = raw / 100 / 1000 = raw / 100000
+	distanceKm := float64(session.TotalDistance) / 100000.0
+	if distanceKm < 0 {
+		return nil, fmt.Errorf("invalid distance: %.2f km", distanceKm)
+	}
+
 	ad := &importer.ActivityData{
 		StartTime:    session.StartTime,
-		Distance:     float64(session.TotalDistance) / 1000.0,
-		Duration:     int(session.TotalTimerTime),
-		TypeActivity: session.Sport.String(),
+		Distance:     distanceKm,
+		Duration:     durationSec,
+		TypeActivity: normalizeActivityType(session.Sport.String()),
 	}
 
 	// Опциональные поля
@@ -70,7 +86,14 @@ func (p *MuktihariFitParser) Parse(ctx context.Context, data []byte) (*importer.
 	}
 	if session.TotalCalories > 0 {
 		cal := int(session.TotalCalories)
-		ad.Calories = &cal
+		// Validate calories: run roughly burns 60-100 kcal/km depending on weight
+		// For distance in km, expect max ~150 kcal/km as a sanity check
+		maxExpectedCalories := int(distanceKm * 150)
+		if cal <= maxExpectedCalories {
+			// Only use FIT calories if they're realistic; otherwise skip and let service layer calculate
+			ad.Calories = &cal
+		}
+		// If calories are too high, just skip them - service will auto-calculate
 	}
 	if session.TrainingLoadPeak > 0 {
 		trainLoad := float64(session.TrainingLoadPeak)
@@ -109,13 +132,161 @@ func (p *MuktihariFitParser) Parse(ctx context.Context, data []byte) (*importer.
 		ad.RmssdHrv = &rmssd
 	}
 
-	if len(session.TimeInHrZone) > 0 {
-		zoneTimes := make([]int, 0, len(session.TimeInHrZone))
-		for _, z := range session.TimeInHrZone {
-			zoneTimes = append(zoneTimes, int(z/1000))
-		}
-		ad.TimeInHrZone = zoneTimes
-	}
+	ad.TimeInHrZone = extractHRZones(activity.Records, activity.TimeInZones, session.TimeInHrZone, durationSec, session.MaxHeartRate)
 
 	return ad, nil
+}
+
+func extractHRZones(records []*mesgdef.Record, timeInZones []*mesgdef.TimeInZone, sessionZones []uint32, durationSec int, maxHR uint8) []int {
+	if zones := extractHRZonesFromTimeInZones(timeInZones); len(zones) > 0 {
+		return zones
+	}
+
+	if len(sessionZones) > 0 {
+		zones := make([]int, 0, len(sessionZones))
+		for _, z := range sessionZones {
+			zones = append(zones, normalizeZoneSeconds(z))
+		}
+		return zones
+	}
+
+	if len(records) == 0 {
+		return nil
+	}
+
+	effectiveMaxHR := int(maxHR)
+	if effectiveMaxHR <= 0 {
+		for _, rec := range records {
+			hr := int(rec.HeartRate)
+			if hr > effectiveMaxHR {
+				effectiveMaxHR = hr
+			}
+		}
+	}
+	if effectiveMaxHR <= 0 {
+		return nil
+	}
+
+	zones := make([]int, 5)
+	var prevTime time.Time
+	var prevHR int
+	havePrev := false
+
+	for _, rec := range records {
+		hr := int(rec.HeartRate)
+		if hr <= 0 || rec.Timestamp.IsZero() {
+			continue
+		}
+
+		if havePrev {
+			delta := int(rec.Timestamp.Sub(prevTime).Seconds())
+			if delta <= 0 {
+				delta = 1
+			}
+			if delta > 10 {
+				delta = 1
+			}
+			idx := detectHRZone(prevHR, effectiveMaxHR)
+			zones[idx] += delta
+		}
+
+		prevTime = rec.Timestamp
+		prevHR = hr
+		havePrev = true
+	}
+
+	if !havePrev {
+		return nil
+	}
+
+	total := 0
+	for _, z := range zones {
+		total += z
+	}
+	if total <= 0 {
+		return nil
+	}
+
+	if durationSec > 0 && total > durationSec {
+		scale := float64(durationSec) / float64(total)
+		for i := range zones {
+			zones[i] = int(math.Round(float64(zones[i]) * scale))
+		}
+	}
+
+	return zones
+}
+
+func extractHRZonesFromTimeInZones(items []*mesgdef.TimeInZone) []int {
+	if len(items) == 0 {
+		return nil
+	}
+
+	// Берём последнюю запись с заполненным TimeInHrZone (обычно самая актуальная summary)
+	for i := len(items) - 1; i >= 0; i-- {
+		item := items[i]
+		if item == nil || len(item.TimeInHrZone) == 0 {
+			continue
+		}
+
+		zones := make([]int, 0, len(item.TimeInHrZone))
+		for _, z := range item.TimeInHrZone {
+			zones = append(zones, normalizeZoneSeconds(z))
+		}
+		return zones
+	}
+
+	return nil
+}
+
+func normalizeZoneSeconds(raw uint32) int {
+	v := int(raw)
+	if v <= 0 {
+		return 0
+	}
+	// FIT TimeInHrZone Scale=1000, Units=s
+	return int(math.Round(float64(raw) / 1000.0))
+}
+
+func detectHRZone(hr, maxHR int) int {
+	if maxHR <= 0 {
+		return 0
+	}
+	ratio := float64(hr) / float64(maxHR)
+	switch {
+	case ratio < 0.60:
+		return 0
+	case ratio < 0.70:
+		return 1
+	case ratio < 0.80:
+		return 2
+	case ratio < 0.90:
+		return 3
+	default:
+		return 4
+	}
+}
+
+// normalizeActivityType преобразует тип активности из FIT в стандартный формат
+func normalizeActivityType(sport string) string {
+	if sport == "" {
+		return "run"
+	}
+	// Преобразуем в нижний регистр для унификации
+	lower := strings.ToLower(sport)
+
+	// Маппируем известные типы
+	switch lower {
+	case "running", "run":
+		return "run"
+	case "cycling", "bike", "cycle":
+		return "cycling"
+	case "swimming", "swim":
+		return "swimming"
+	case "walking", "walk":
+		return "walk"
+	default:
+		// Если тип неизвестен, возвращаем его как есть в нижнем регистре
+		return lower
+	}
 }

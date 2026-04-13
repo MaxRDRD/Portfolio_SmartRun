@@ -24,6 +24,7 @@ type WorkoutsResponse struct {
 	SdrrHrv                 *int     `json:"sdrr_hrv,omitempty"`
 	RmssdHrv                *int     `json:"rmssd_hrv,omitempty"`
 	PerceivedEffort         *int     `json:"perceived_effort,omitempty"`
+	HRZones                 *HRZonesRequest `json:"hr_zones,omitempty"`
 	Notes                   string   `json:"notes,omitempty"`
 	Shoes                   string   `json:"shoes,omitempty"`
 	PrimaryTrainingFocus    string   `json:"primary_training_focus"`
