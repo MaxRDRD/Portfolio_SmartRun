@@ -1,0 +1,61 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: smartrun-portfolio-db
+    environment:
+      POSTGRES_DB: smartrun
+      POSTGRES_USER: smartrun
+      POSTGRES_PASSWORD: smartrun
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U smartrun -d smartrun"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - smartrun-postgres-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  redis:
+    image: redis:7-alpine
+    container_name: smartrun-portfolio-redis
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    ports:
+      - "6379:6379"
+
+  migrate:
+    image: migrate/migrate:v4.18.3
+    container_name: smartrun-portfolio-migrate
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./migrations:/migrations:ro
+    command:
+      ["-path", "/migrations", "-database", "postgres://smartrun:smartrun@db:5432/smartrun?sslmode=disable", "up"]
+
+  app:
+    build:
+      context: .
+    container_name: smartrun-portfolio-app
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      CONN_STRING: postgres://smartrun:smartrun@db:5432/smartrun?sslmode=disable
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: dev-only-super-secret-change-me
+      APP_PUBLIC_URL: http://localhost:8080
+    ports:
+      - "8080:8080"
+
+volumes:
+  smartrun-postgres-data:
