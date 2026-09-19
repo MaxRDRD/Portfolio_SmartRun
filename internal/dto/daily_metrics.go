@@ -5,6 +5,7 @@ import "time"
 type CreateDailyMetricRequest struct {
 	Date           string  `json:"date"`
 	SleepScore     int     `json:"sleep_score"`
+	SleepHours     float64 `json:"sleep_hours,omitempty"`
 	BodyBatteryAvg float64 `json:"body_battery_avg"`
 	Steps          int     `json:"steps"`
 }
@@ -22,6 +23,7 @@ type UpdateDailyMetricRequest struct {
 	Steps          int       `json:"steps"`
 	TotalCalories  int       `json:"total_calories"`
 	SleepScore     int       `json:"sleep_score"`
+	SleepHours     float64   `json:"sleep_hours"`
 	StressAvg      int       `json:"stress_avg"`
 	Recommendation string    `json:"recommendation"`
 	StreakDays     int       `json:"streak_days"`
@@ -43,6 +45,7 @@ type DailyMetricResponse struct {
 	Steps          int        `json:"steps"`
 	TotalCalories  int        `json:"total_calories"`
 	SleepScore     int        `json:"sleep_score"`
+	SleepHours     float64    `json:"sleep_hours"`
 	StressAvg      int        `json:"stress_avg"`
 	Recommendation string     `json:"recommendation"`
 	StreakDays     int        `json:"streak_days"`

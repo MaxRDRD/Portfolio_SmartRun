@@ -81,12 +81,12 @@ func (s *metricService) GetMetrics(ctx context.Context, filter dto.MetricsFilter
 	metric, err := s.repo.GetMetricsByID(ctx, filter)
 	if errors.Is(err, my_errors.ErrMetricNotFound) {
 		log.Warn("metrics service: get not found")
-		return nil, err
+		return nil, fmt.Errorf("GetMetrics: %w", err)
 	}
 	if err != nil {
 		log.Error("metrics service: get failed", "error", err)
 	}
-	return metric, err
+	return metric, fmt.Errorf("GetMetrics: %w", err)
 }
 
 func (s *metricService) GetAllMetrics(ctx context.Context, filter dto.MetricsFilter) (*model.Metrics, error) {
@@ -95,12 +95,12 @@ func (s *metricService) GetAllMetrics(ctx context.Context, filter dto.MetricsFil
 	metric, err := s.repo.GetAllMetricsByID(ctx, filter)
 	if errors.Is(err, my_errors.ErrMetricNotFound) {
 		log.Warn("metrics service: get-all not found")
-		return nil, err
+		return nil, fmt.Errorf("GetAllMetrics: %w", err)
 	}
 	if err != nil {
 		log.Error("metrics service: get-all failed", "error", err)
 	}
-	return metric, err
+	return metric, fmt.Errorf("GetAllMetrics: %w", err)
 }
 
 func (s *metricService) UpdateMetrics(ctx context.Context, metrics model.Metrics) (*model.Metrics, error) {

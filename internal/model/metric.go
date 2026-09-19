@@ -27,6 +27,7 @@ type DailyMetric struct {
 	Steps          int
 	TotalCalories  int
 	SleepScore     int
+	SleepHours     float64
 	StressAvg      int
 	Recommendation string
 	StreakDays     int

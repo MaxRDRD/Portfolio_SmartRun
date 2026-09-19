@@ -1,0 +1,2 @@
+ALTER TABLE workouts ADD COLUMN feel SMALLINT;
+ALTER TABLE daily_metrics ADD COLUMN sleep_hours DECIMAL(4,2);

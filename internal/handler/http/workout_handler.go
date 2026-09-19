@@ -1,7 +1,6 @@
 package http
 
 import (
-	"bytes"
 	"SmartRun/internal/auth"
 	"SmartRun/internal/dto"
 	"SmartRun/internal/logger"
@@ -9,6 +8,7 @@ import (
 	"SmartRun/internal/model"
 	"SmartRun/internal/usecase/service"
 	"SmartRun/pkg/my_errors"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"io"

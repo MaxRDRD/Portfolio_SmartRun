@@ -1,7 +1,8 @@
-﻿package service
+package service
 
 import (
 	"SmartRun/internal/auth"
+	"SmartRun/internal/broker"
 	"SmartRun/internal/config"
 	"SmartRun/internal/dto"
 	appLogger "SmartRun/internal/logger"
@@ -49,6 +50,7 @@ type authService struct {
 	cfg               config.AuthConfig
 	validate          *validator.Validate
 	txManager         repository.TxManager
+	publisher         broker.Publisher
 }
 
 func NewUserService(userRepo repository.UserRepository,
@@ -58,7 +60,8 @@ func NewUserService(userRepo repository.UserRepository,
 	emailService EmailService,
 	cfg config.AuthConfig,
 	txManager repository.TxManager,
-	validator *validator.Validate) AuthService {
+	validator *validator.Validate,
+	publisher broker.Publisher) AuthService {
 	return &authService{
 		userRepo:          userRepo,
 		sessionRepo:       sessionRepo,
@@ -68,6 +71,7 @@ func NewUserService(userRepo repository.UserRepository,
 		cfg:               cfg,
 		validate:          validator,
 		txManager:         txManager,
+		publisher:         publisher,
 	}
 }
 
@@ -77,7 +81,7 @@ func (s *authService) Register(ctx context.Context, req dto.RegisterRequest) (*d
 	req.Password = strings.TrimSpace(req.Password)
 	if err := s.validate.Struct(req); err != nil {
 		log.Warn("auth service: register validation failed", "email", req.Email, "error", err)
-		return nil, err
+		return nil, fmt.Errorf("Register: %w", err)
 	}
 
 	var result *dto.AuthResult
@@ -90,12 +94,12 @@ func (s *authService) Register(ctx context.Context, req dto.RegisterRequest) (*d
 			return my_errors.ErrUserAlreadyExists
 		}
 		if !errors.Is(err, my_errors.ErrUserNotFound) {
-			return err
+			return fmt.Errorf("Register: %w", err)
 		}
 
 		hash, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
 		if err != nil {
-			return err
+			return fmt.Errorf("Register: %w", err)
 		}
 		hp := string(hash)
 		prefix := hp
@@ -133,21 +137,21 @@ func (s *authService) Register(ctx context.Context, req dto.RegisterRequest) (*d
 		}
 
 		if err = s.userRepo.CreateUser(ctx, user); err != nil {
-			return err
+			return fmt.Errorf("Register: %w", err)
 		}
 
 		refreshToken, session, err := s.createSession(user.ID)
 		if err != nil {
-			return err
+			return fmt.Errorf("Register: %w", err)
 		}
 
 		if err = s.sessionRepo.CreateSession(ctx, session); err != nil {
-			return err
+			return fmt.Errorf("Register: %w", err)
 		}
 
 		accessToken, err := auth.GenerateAccessToken(user.ID, s.cfg.AccessTokenTTL)
 		if err != nil {
-			return err
+			return fmt.Errorf("Register: %w", err)
 		}
 
 		result = &dto.AuthResult{
@@ -178,7 +182,7 @@ func (s *authService) Register(ctx context.Context, req dto.RegisterRequest) (*d
 	} else if result != nil && result.User != nil {
 		log.Info("auth service: register success", "user_id", result.User.ID, "email", result.User.Email)
 	}
-	return result, err
+	return result, fmt.Errorf("Register: %w", err)
 }
 
 func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (*dto.AuthResult, error) {
@@ -187,7 +191,7 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (*dto.Aut
 	req.Password = strings.TrimSpace(req.Password)
 	if err := s.validate.Struct(req); err != nil {
 		log.Warn("auth service: login validation failed", "email", req.Email, "password_len", len(req.Password), "error", err)
-		return nil, err
+		return nil, fmt.Errorf("Login: %w", err)
 	}
 
 	log.Info("auth service: login attempt", "email", req.Email)
@@ -211,26 +215,26 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (*dto.Aut
 
 	err = s.txManager.WithTransaction(ctx, func(ctx context.Context) error {
 		if err := s.sessionRepo.DeleteAllSessionsForUser(ctx, user.ID); err != nil {
-			return err
+			return fmt.Errorf("Login: %w", err)
 		}
 
 		refreshToken, session, err := s.createSession(user.ID)
 		if err != nil {
-			return err
+			return fmt.Errorf("Login: %w", err)
 		}
 
 		if err = s.sessionRepo.CreateSession(ctx, session); err != nil {
-			return err
+			return fmt.Errorf("Login: %w", err)
 		}
 
 		enabled, err := s.totpRepo.IsTOTPEnabled(ctx, user.ID)
 		if err != nil {
-			return err
+			return fmt.Errorf("Login: %w", err)
 		}
 
 		accessToken, err := auth.GenerateAccessToken(user.ID, s.cfg.AccessTokenTTL)
 		if err != nil {
-			return err
+			return fmt.Errorf("Login: %w", err)
 		}
 
 		result = &dto.AuthResult{
@@ -260,14 +264,14 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (*dto.Aut
 	} else if result != nil && result.User != nil {
 		log.Info("auth service: login success", "user_id", result.User.ID, "email", result.User.Email)
 	}
-	return result, err
+	return result, fmt.Errorf("Login: %w", err)
 
 }
 
 func (s *authService) GetUserByID(ctx context.Context, id int64) (*dto.UserResponse, error) {
 	user, err := s.userRepo.GetUserByID(ctx, id)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("GetUserByID: %w", err)
 	}
 
 	return &dto.UserResponse{
@@ -287,12 +291,12 @@ func (s *authService) GetUserByID(ctx context.Context, id int64) (*dto.UserRespo
 
 func (s *authService) UpdateUser(ctx context.Context, userID int64, req dto.UpdateUserRequest) (*dto.UserResponse, error) {
 	if err := s.validate.Struct(req); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("UpdateUser: %w", err)
 	}
 
 	user, err := s.userRepo.GetUserByID(ctx, userID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("UpdateUser: %w", err)
 	}
 	oldEmail := user.Email
 
@@ -341,7 +345,7 @@ func (s *authService) UpdateUser(ctx context.Context, userID int64, req dto.Upda
 	}
 
 	if err := s.userRepo.UpdateUser(ctx, user); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("UpdateUser: %w", err)
 	}
 
 	s.userRepo.InvalidateUserCache(ctx, userID, oldEmail)
@@ -366,12 +370,12 @@ func (s *authService) UpdateUser(ctx context.Context, userID int64, req dto.Upda
 
 func (s *authService) GetEmailByID(ctx context.Context, id int64) (string, error) {
 	email, err := s.userRepo.GetEmailByID(ctx, id)
-	return email, err
+	return email, fmt.Errorf("GetEmailByID: %w", err)
 }
 
 func (s *authService) DeleteRefreshToken(ctx context.Context, refresh_hash string) error {
 	err := s.sessionRepo.DeleteSessionByHash(ctx, refresh_hash)
-	return err
+	return fmt.Errorf("DeleteRefreshToken: %w", err)
 }
 
 func (s *authService) Logout(ctx context.Context, refreshToken string) error {
@@ -410,23 +414,23 @@ func (s *authService) Refresh(ctx context.Context, refreshToken string) (*dto.Au
 		// Если токен уже удалён, вернётся ErrTokenNotFound (не пройдём дальше)
 		userID, err := s.sessionRepo.ConsumeSessionByHash(ctx, refreshHash)
 		if err != nil {
-			return err
+			return fmt.Errorf("Refresh: %w", err)
 		}
 
 		// Создаём НОВУЮ сессию для этого пользователя
 		newRefresh, newSession, err := s.createSession(userID)
 		if err != nil {
-			return err
+			return fmt.Errorf("Refresh: %w", err)
 		}
 
 		if err = s.sessionRepo.CreateSession(ctx, newSession); err != nil {
-			return err
+			return fmt.Errorf("Refresh: %w", err)
 		}
 
 		// 3️⃣ Генерируем новый access-токен
 		newAccess, err := auth.GenerateAccessToken(userID, s.cfg.AccessTokenTTL)
 		if err != nil {
-			return err
+			return fmt.Errorf("Refresh: %w", err)
 		}
 
 		result = &dto.AuthResult{
@@ -437,7 +441,7 @@ func (s *authService) Refresh(ctx context.Context, refreshToken string) (*dto.Au
 		return nil
 	})
 
-	return result, err
+	return result, fmt.Errorf("Refresh: %w", err)
 }
 
 func (s *authService) EnableTOTP(ctx context.Context, userID int64, email string) (string, []byte, error) {
@@ -446,19 +450,19 @@ func (s *authService) EnableTOTP(ctx context.Context, userID int64, email string
 		AccountName: email,
 	})
 	if err != nil {
-		return "", nil, err
+		return "", nil, fmt.Errorf("EnableTOTP: %w", err)
 	}
 
 	// Сохраняем секрет как pending: 2FA включится только после VerifyTOTP.
 	err = s.totpRepo.UpdateTOTPSecret(ctx, userID, key.Secret(), false)
 	if err != nil {
-		return "", nil, err
+		return "", nil, fmt.Errorf("EnableTOTP: %w", err)
 	}
 
 	// Генерация QR
 	qr, err := qrcode.Encode(key.URL(), qrcode.Medium, 256)
 	if err != nil {
-		return "", nil, err
+		return "", nil, fmt.Errorf("EnableTOTP: %w", err)
 	}
 
 	return key.Secret(), qr, nil // Возвращаем для ручной настройки, если QR не сработает
@@ -467,7 +471,7 @@ func (s *authService) EnableTOTP(ctx context.Context, userID int64, email string
 func (s *authService) VerifyTOTP(ctx context.Context, userID int64, code string) (bool, error) {
 	secret, err := s.totpRepo.GetTOTPSecret(ctx, userID)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("VerifyTOTP: %w", err)
 	}
 	valid := totp.Validate(code, secret)
 	if !valid {
@@ -475,7 +479,7 @@ func (s *authService) VerifyTOTP(ctx context.Context, userID int64, code string)
 	}
 
 	if err := s.totpRepo.UpdateTOTPSecret(ctx, userID, secret, true); err != nil {
-		return false, err
+		return false, fmt.Errorf("VerifyTOTP: %w", err)
 	}
 
 	return true, nil
@@ -484,7 +488,7 @@ func (s *authService) VerifyTOTP(ctx context.Context, userID int64, code string)
 func (s *authService) IsTOTPEnabled(ctx context.Context, userID int64) (bool, error) {
 	TOTPEnabled, err := s.totpRepo.IsTOTPEnabled(ctx, userID)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("IsTOTPEnabled: %w", err)
 	}
 	return TOTPEnabled, nil
 }
@@ -499,16 +503,16 @@ func (s *authService) IssueTokensAfter2FA(ctx context.Context, userID int64) (*d
 
 	refreshToken, session, err := s.createSession(userID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("IssueTokensAfter2FA: %w", err)
 	}
 
 	sessionRepoTx := postgres.NewSessionRepository(tx)
 	err = sessionRepoTx.CreateSession(ctx, session)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("IssueTokensAfter2FA: %w", err)
 	}
 	if err := tx.Commit(ctx); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("IssueTokensAfter2FA: %w", err)
 	}
 
 	accessToken, err := auth.GenerateAccessToken(userID, s.cfg.AccessTokenTTL)
@@ -527,7 +531,7 @@ func (s *authService) createSession(userID int64) (string, *model.Session, error
 
 	refreshToken, err := auth.GenerateRefreshToken()
 	if err != nil {
-		return "", nil, err
+		return "", nil, fmt.Errorf("createSession: %w", err)
 	}
 
 	refreshHash := auth.HashToken(refreshToken)
@@ -542,6 +546,7 @@ func (s *authService) createSession(userID int64) (string, *model.Session, error
 	return refreshToken, session, nil
 }
 
+// RequestPasswordReset запрашивает сброс пароля и отправляет событие
 func (s *authService) RequestPasswordReset(ctx context.Context, email string) error {
 	email = strings.ToLower(strings.TrimSpace(email))
 	user, err := s.userRepo.GetUserByEmail(ctx, email)
@@ -551,7 +556,7 @@ func (s *authService) RequestPasswordReset(ctx context.Context, email string) er
 
 	token, err := auth.GenerateRefreshToken()
 	if err != nil {
-		return err
+		return fmt.Errorf("RequestPasswordReset: %w", err)
 	}
 	tokenHash := auth.HashToken(token)
 
@@ -559,7 +564,7 @@ func (s *authService) RequestPasswordReset(ctx context.Context, email string) er
 
 	err = s.passwordResetRepo.CreateResetToken(ctx, user.ID, tokenHash, expiresAt)
 	if err != nil {
-		return err
+		return fmt.Errorf("RequestPasswordReset: %w", err)
 	}
 
 	publicURL := s.cfg.PublicURL
@@ -567,15 +572,22 @@ func (s *authService) RequestPasswordReset(ctx context.Context, email string) er
 		publicURL = "http://localhost:3000"
 	}
 	resetLink := fmt.Sprintf("%s/reset-password?token=%s", publicURL, token)
-	// Здесь вызов сервиса отправки почты
-	return s.emailService.SendPasswordResetEmail(ctx, user.Email, resetLink, user.Name)
+	// Отправляем событие в брокер сообщений для асинхронной отправки
+	event := broker.PasswordResetEvent{
+		To:        user.Email,
+		ResetLink: resetLink,
+		UserName:  user.Name,
+	}
+	// context.WithoutCancel предотвращает отмену публикации при обрыве соединения клиентом
+	return s.publisher.PublishPasswordReset(context.WithoutCancel(ctx), event)
 }
 
+// ValidateResetToken проверяет валидность токена сброса пароля
 func (s *authService) ValidateResetToken(ctx context.Context, token string) (int64, error) {
 	hash := auth.HashToken(token)
 	userID, used, err := s.passwordResetRepo.FindResetByTokenHash(ctx, hash)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("ValidateResetToken: %w", err)
 	}
 	if used {
 		return 0, my_errors.ErrTokenAlreadyUsed
@@ -583,45 +595,36 @@ func (s *authService) ValidateResetToken(ctx context.Context, token string) (int
 	return userID, nil
 }
 
+// PerformPasswordReset выполняет сброс пароля с использованием валидного токена
 func (s *authService) PerformPasswordReset(ctx context.Context, userID int64, newPassword string, resetToken string) error {
 	user, err := s.userRepo.GetUserByID(ctx, userID)
 	if err != nil {
-		return err
+		return fmt.Errorf("PerformPasswordReset: %w", err)
 	}
 
 	err = s.txManager.WithTransaction(ctx, func(ctx context.Context) error {
 		hash := auth.HashToken(resetToken)
 
-		// КРИТИЧНО: ConsumeResetToken делает проверку + пометку в ОДНОЙ SQL операции
-		//
-		// Защита от race condition (двойного использования одного токена):
-		//   Запрос A: ConsumeResetToken ( UPDATE used=false → true) | ✓ 1 row affected
-		//            ↓                                              |
-		//            UpdatePassword (меняет пароль пользователя)    | Запрос B: ConsumeResetToken
-		//            ↓                                              |   ( UPDATE used=false → true) ✗ 0 rows!
-		//            DeleteAllSessionsForUser                       |   Возврат ErrInvalidToken
-		//                                                           |
-		// Результат: пароль изменён ОДИН раз, вторая попытка отклонена!
 		if err := s.passwordResetRepo.ConsumeResetToken(ctx, hash, userID); err != nil {
-			return err
+			return fmt.Errorf("PerformPasswordReset: %w", err)
 		}
 
 		// Хешируем новый пароль
 		passHash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
 		if err != nil {
-			return err
+			return fmt.Errorf("PerformPasswordReset: %w", err)
 		}
 
 		// Обновляем пароль в БД
 		if err = s.userRepo.UpdatePassword(ctx, userID, string(passHash)); err != nil {
-			return err
+			return fmt.Errorf("PerformPasswordReset: %w", err)
 		}
 
 		// Рекомендуется: удаляем все сессии, чтобы пользователь перезалогинился с новым паролем
 		return s.sessionRepo.DeleteAllSessionsForUser(ctx, userID)
 	})
 	if err != nil {
-		return err
+		return fmt.Errorf("PerformPasswordReset: %w", err)
 	}
 
 	// Инвалидируем кеш пользователя (только если транзакция прошла успешно)

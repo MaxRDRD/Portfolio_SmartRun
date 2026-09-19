@@ -48,7 +48,7 @@ func (r *sessionRepository) DeleteSessionByHash(ctx context.Context, hash string
 }
 
 // ConsumeSessionByHash атомарно удаляет валидную сессию и возвращает user_id.
-// 
+//
 // КРИТИЧНО для защиты от race condition при одновременных refresh запросах:
 // - Проверяет: токен существует, не отозван, не истёк
 // - Удаляет токен в одной SQL операции
@@ -127,14 +127,14 @@ func (r *sessionRepository) FindSessionByHash(ctx context.Context, hash string) 
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil, my_errors.ErrTokenNotFound
 		}
-		return nil, err
+		return nil, fmt.Errorf("FindSessionByHash: %w", err)
 	}
 
 	if session.Revoked || session.ExpiresAt.Before(time.Now().UTC()) {
 		return nil, my_errors.ErrInvalidToken
 	}
 
-	return &session, err
+	return &session, fmt.Errorf("FindSessionByHash: %w", err)
 }
 
 func (r *sessionRepository) CleanupExpiredSessions(ctx context.Context) error {
@@ -142,12 +142,12 @@ func (r *sessionRepository) CleanupExpiredSessions(ctx context.Context) error {
 
 	query := `DELETE FROM sessions WHERE expires_at < NOW() - INTERVAL '1 day'`
 	_, err := db.Exec(ctx, query)
-	return err
+	return fmt.Errorf("CleanupExpiredSessions: %w", err)
 }
 
 func (r *sessionRepository) DeleteAllSessionsForUser(ctx context.Context, userID int64) error {
 	db := r.getDB(ctx)
 
 	_, err := db.Exec(ctx, "DELETE FROM sessions WHERE user_id = $1", userID)
-	return err
+	return fmt.Errorf("DeleteAllSessionsForUser: %w", err)
 }

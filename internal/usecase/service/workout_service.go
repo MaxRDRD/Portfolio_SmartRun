@@ -1,6 +1,7 @@
 package service
 
 import (
+	"SmartRun/internal/broker"
 	"SmartRun/internal/calculate"
 	"SmartRun/internal/dto"
 	"SmartRun/internal/logger"
@@ -25,6 +26,7 @@ type WorkoutService interface {
 	Update(ctx context.Context, userID, id int64, req dto.UpdateRequest, isFullReplace bool) (*model.Workouts, error)
 	GetMonthlyHistory(ctx context.Context, userID int64, monthsLimit, monthsOffset int) ([]model.WorkoutMonthHistory, error)
 	UploadFit(ctx context.Context, userID int64, fileData []byte) (*model.Workouts, error)
+	RecalculateDailyMetricsForDate(ctx context.Context, userID int64, date time.Time) error
 }
 
 type workoutService struct {
@@ -34,6 +36,7 @@ type workoutService struct {
 	parser           importer.FitParser
 	validate         *validator.Validate
 	txManager        repository.TxManager
+	publisher        broker.Publisher
 }
 
 var minReasonableWorkoutDate = time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -43,7 +46,8 @@ func NewWorkoutService(workoutRepo repository.WorkoutRepository,
 	userRepo repository.UserRepository,
 	parser importer.FitParser,
 	validate *validator.Validate,
-	txManager repository.TxManager) WorkoutService {
+	txManager repository.TxManager,
+	publisher broker.Publisher) WorkoutService {
 
 	/*Регистрация нового формата
 	_ = validate.RegisterValidation("date_format", func(fl validator.FieldLevel) bool {
@@ -59,12 +63,14 @@ func NewWorkoutService(workoutRepo repository.WorkoutRepository,
 		parser:           parser,
 		validate:         validate,
 		txManager:        txManager,
+		publisher:        publisher,
 	}
 }
 
+// Create создает новую тренировку и запускает пересчет метрик
 func (s *workoutService) Create(ctx context.Context, userID int64, req dto.CreateRequest) (*model.Workouts, error) {
 	if err := s.validate.Struct(req); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Create: %w", err)
 	}
 	if req.Distance <= 0 {
 		return nil, errors.New("distance must be greater than zero")
@@ -97,6 +103,7 @@ func (s *workoutService) Create(ctx context.Context, userID int64, req dto.Creat
 			ElevationGain: req.ElevationGain,
 			ElevationLoss: req.ElevationLoss,
 			RPE:           req.RPE,
+			Feel:          req.Feel,
 		}
 		if req.Notes != nil {
 			workout.Notes = *req.Notes
@@ -115,47 +122,61 @@ func (s *workoutService) Create(ctx context.Context, userID int64, req dto.Creat
 
 		calculate.CalculateDerivedMetrics(workout, user)
 
-		err = s.workoutRepo.Create(txCtx, workout)
-		if err != nil {
-			return err
+		isAnomalous, reason := validupdate.CheckForAnomalies(workout)
+		workout.IsAnomalous = isAnomalous
+		if isAnomalous {
+			workout.AnomalyReason = &reason
 		}
 
-		// Пересчитать daily metrics для дня этой новой тренировки
-		if err := s.recalculateDailyMetricsForDate(txCtx, userID, workout.Date); err != nil {
-			return fmt.Errorf("recalculate daily metrics: %w", err)
+		err = s.workoutRepo.Create(txCtx, workout)
+		if err != nil {
+			return fmt.Errorf("Create: %w", err)
 		}
 
 		return nil
 	})
 
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Create: %w", err)
+	}
+
+	// Пересчет daily metrics публикуется в очередь событий
+	// context.WithoutCancel позволяет завершить публикацию при отмене запроса
+	if !workout.IsAnomalous {
+		if pubErr := s.publisher.PublishMetricsRecalculation(context.WithoutCancel(ctx), broker.MetricsRecalculationEvent{UserID: userID, Date: workout.Date}); pubErr != nil {
+			logger.FromContext(ctx).Warn("workouts/create: failed to publish metrics recalculation event", "error", pubErr)
+		}
+	} else {
+		logger.FromContext(ctx).Info("workouts/create: skipped metrics recalculation due to anomalous workout", "workout_id", workout.ID)
 	}
 
 	return workout, nil
 }
 
+// GetByID получает тренировку по идентификатору и ID пользователя
 func (s *workoutService) GetByID(ctx context.Context, id int64, userID int64) (*model.Workouts, error) {
 	workout, err := s.workoutRepo.GetByID(ctx, id, userID)
 	if errors.Is(err, my_errors.ErrWorkoutNotFound) {
-		return nil, err
+		return nil, fmt.Errorf("GetByID: %w", err)
 	}
 	return workout, nil
 }
 
+// GetAllByID возвращает список тренировок пользователя с учетом фильтров
 func (s *workoutService) GetAllByID(ctx context.Context, filter dto.WorkoutFilter) ([]model.Workouts, error) {
 	workouts, err := s.workoutRepo.GetAllByUserID(ctx, filter)
 	if errors.Is(err, my_errors.ErrWorkoutNotFound) {
-		return nil, err
+		return nil, fmt.Errorf("GetAllByID: %w", err)
 	}
 	return workouts, nil
 }
 
+// Delete удаляет тренировку и запускает пересчет метрик
 func (s *workoutService) Delete(ctx context.Context, id, userID int64) error {
 	// Получить workout ДО удаления (нужна дата для пересчета metrics)
 	workout, err := s.workoutRepo.GetByID(ctx, id, userID)
 	if err != nil {
-		return err
+		return fmt.Errorf("Delete: %w", err)
 	}
 
 	deleteDate := workout.Date
@@ -163,15 +184,23 @@ func (s *workoutService) Delete(ctx context.Context, id, userID int64) error {
 	err = s.txManager.WithTransaction(ctx, func(txCtx context.Context) error {
 		// Удалить workout
 		if err := s.workoutRepo.DeleteWorkout(txCtx, id, userID); err != nil {
-			return err
+			return fmt.Errorf("Delete: %w", err)
 		}
 
-		// Пересчитать daily metrics для дня, откуда удалили тренировку
-		return s.recalculateDailyMetricsForDate(txCtx, userID, deleteDate)
+		return nil
 	})
-	return err
+
+	if err == nil {
+		// context.WithoutCancel позволяет завершить публикацию при отмене запроса
+		if pubErr := s.publisher.PublishMetricsRecalculation(context.WithoutCancel(ctx), broker.MetricsRecalculationEvent{UserID: userID, Date: deleteDate}); pubErr != nil {
+			logger.FromContext(ctx).Warn("workouts/delete: failed to publish metrics recalculation event", "error", pubErr)
+		}
+	}
+
+	return fmt.Errorf("Delete: %w", err)
 }
 
+// Update обновляет данные тренировки и пересчитывает метрики
 func (s *workoutService) Update(ctx context.Context, userID, id int64, req dto.UpdateRequest, isFullReplace bool) (*model.Workouts, error) {
 
 	// 1. Получаем пользователя (нужен для расчётов)
@@ -183,7 +212,7 @@ func (s *workoutService) Update(ctx context.Context, userID, id int64, req dto.U
 	// 2. Загружаем текущее состояние тренировки
 	workout, err := s.workoutRepo.GetByID(ctx, id, userID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Update: %w", err)
 	}
 
 	// Запомнили старую дату (может измениться)
@@ -221,33 +250,47 @@ func (s *workoutService) Update(ctx context.Context, userID, id int64, req dto.U
 			workout.PrimaryTrainingFocus = calculate.DeterminePrimaryFocus(*aerobic, *anaerobic, workout.TimeInHrZone)
 		}
 
+		isAnomalous, reason := validupdate.CheckForAnomalies(workout)
+		workout.IsAnomalous = isAnomalous
+		if isAnomalous {
+			workout.AnomalyReason = &reason
+		} else {
+			workout.AnomalyReason = nil
+		}
+
 		err := s.workoutRepo.Update(txCtx, workout)
 		if err != nil {
-			return err
+			return fmt.Errorf("Update: %w", err)
 		}
 		updatedWorkout = workout
-
-		// 6. Пересчитать daily metrics для дня изменённой тренировки
-		if err := s.recalculateDailyMetricsForDate(txCtx, userID, workout.Date); err != nil {
-			return fmt.Errorf("recalculate daily metrics: %w", err)
-		}
-
-		// 7. Если дата изменилась, пересчитать и старый день
-		if oldDate != workout.Date {
-			if err := s.recalculateDailyMetricsForDate(txCtx, userID, oldDate); err != nil {
-				return fmt.Errorf("recalculate old date daily metrics: %w", err)
-			}
-		}
 
 		return nil
 	})
 
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("Update: %w", err)
 	}
+
+	// Пересчитать daily metrics для дня изменённой тренировки
+	if !updatedWorkout.IsAnomalous {
+		// context.WithoutCancel позволяет завершить публикацию при отмене запроса
+		if pubErr := s.publisher.PublishMetricsRecalculation(context.WithoutCancel(ctx), broker.MetricsRecalculationEvent{UserID: userID, Date: workout.Date}); pubErr != nil {
+			logger.FromContext(ctx).Warn("workouts/update: failed to publish metrics recalculation event", "error", pubErr)
+		}
+	}
+
+	// Если дата изменилась, пересчитать и старый день
+	if oldDate != workout.Date {
+		// context.WithoutCancel позволяет завершить публикацию при отмене запроса
+		if pubErr := s.publisher.PublishMetricsRecalculation(context.WithoutCancel(ctx), broker.MetricsRecalculationEvent{UserID: userID, Date: oldDate}); pubErr != nil {
+			logger.FromContext(ctx).Warn("workouts/update: failed to publish metrics recalculation event for old date", "error", pubErr)
+		}
+	}
+
 	return updatedWorkout, nil
 }
 
+// mapHRZonesRequest преобразует запрос пульсовых зон в массив
 func mapHRZonesRequest(z *dto.HRZonesRequest) []int {
 	if z == nil {
 		return nil
@@ -261,10 +304,12 @@ func mapHRZonesRequest(z *dto.HRZonesRequest) []int {
 	return zones
 }
 
+// GetMonthlyHistory возвращает помесячную историю тренировок пользователя
 func (s *workoutService) GetMonthlyHistory(ctx context.Context, userID int64, monthsLimit, monthsOffset int) ([]model.WorkoutMonthHistory, error) {
 	return s.workoutRepo.GetMonthlyHistory(ctx, userID, monthsLimit, monthsOffset)
 }
 
+// UploadFit загружает и обрабатывает тренировку из FIT файла
 func (s *workoutService) UploadFit(ctx context.Context, userID int64, fileData []byte) (*model.Workouts, error) {
 	activityData, err := s.parser.Parse(ctx, fileData)
 	if err != nil {
@@ -304,9 +349,15 @@ func (s *workoutService) UploadFit(ctx context.Context, userID int64, fileData [
 
 		calculate.CalculateDerivedMetrics(workout, user)
 
+		isAnomalous, reason := validupdate.CheckForAnomalies(workout)
+		workout.IsAnomalous = isAnomalous
+		if isAnomalous {
+			workout.AnomalyReason = &reason
+		}
+
 		err = s.workoutRepo.Create(ctx, workout)
 		if err != nil {
-			return err
+			return fmt.Errorf("UploadFit: %w", err)
 		}
 
 		return nil
@@ -318,20 +369,25 @@ func (s *workoutService) UploadFit(ctx context.Context, userID int64, fileData [
 		return nil, fmt.Errorf("upload FIT: workout was not persisted")
 	}
 
-	// Пересчет daily metrics не должен откатывать уже сохраненную тренировку.
-	if recalcErr := s.recalculateDailyMetricsForDate(ctx, userID, workout.Date); recalcErr != nil {
-		logger.FromContext(ctx).Warn("workouts/upload-fit: daily metrics recalculation failed",
-			"user_id", userID,
-			"workout_id", workout.ID,
-			"error", recalcErr,
-		)
+	// Пересчет daily metrics публикуется в очередь событий
+	if !workout.IsAnomalous {
+		// context.WithoutCancel позволяет завершить публикацию при отмене запроса
+		if pubErr := s.publisher.PublishMetricsRecalculation(context.WithoutCancel(ctx), broker.MetricsRecalculationEvent{UserID: userID, Date: workout.Date}); pubErr != nil {
+			logger.FromContext(ctx).Warn("workouts/upload-fit: failed to publish metrics recalculation event",
+				"user_id", userID,
+				"workout_id", workout.ID,
+				"error", pubErr,
+			)
+		}
+	} else {
+		logger.FromContext(ctx).Info("workouts/upload-fit: skipped metrics recalculation due to anomalous workout", "workout_id", workout.ID)
 	}
 	return workout, nil
 }
 
-// recalculateDailyMetricsForDate пересчитывает daily metrics для конкретного дня
+// RecalculateDailyMetricsForDate пересчитывает daily metrics для конкретного дня
 // Получает все тренировки этого дня, пересчитывает метрики и сохраняет (INSERT или UPDATE)
-func (s *workoutService) recalculateDailyMetricsForDate(ctx context.Context, userID int64, date time.Time) error {
+func (s *workoutService) RecalculateDailyMetricsForDate(ctx context.Context, userID int64, date time.Time) error {
 	// Нормализуем дату (убираем время)
 	normalizedDate := time.Date(date.Year(), date.Month(), date.Day(), 0, 0, 0, 0, date.Location())
 	dayEnd := normalizedDate.AddDate(0, 0, 1).Add(-time.Nanosecond)
@@ -344,30 +400,37 @@ func (s *workoutService) recalculateDailyMetricsForDate(ctx context.Context, use
 	}
 	workouts, err := s.workoutRepo.GetAllByUserID(ctx, filter)
 	if err != nil && !errors.Is(err, my_errors.ErrWorkoutNotFound) {
-		return err
+		return fmt.Errorf("RecalculateDailyMetricsForDate: %w", err)
 	}
 
 	// Получить daily metric предыдущего дня (нужен для incremental streak и carry-over)
 	yesterday := normalizedDate.AddDate(0, 0, -1)
 	previousMetrics, err := s.dailyMetricsRepo.GetByUserIDAndDate(ctx, userID, yesterday)
 	if err != nil {
-		return err
+		return fmt.Errorf("RecalculateDailyMetricsForDate: %w", err)
 	}
 	// if previousMetrics == nil — это нормально, первый день пользователя
+
+	var validWorkouts []model.Workouts
+	for _, w := range workouts {
+		if !w.IsAnomalous {
+			validWorkouts = append(validWorkouts, w)
+		}
+	}
 
 	// ===== ГЛАВНОЕ: используем calculate.CalculateDailyMetrics =====
 	// Это функция автоматически:
 	// - рассчитает CTL/ATL/TSB/Readiness на основе тренировок
 	// - если нет тренировок → streak=0 но сохранит sleep/bodyBattery
 	// - вычислит Monotony/Strain (вариативность и нагрузку)
-	dailyMetric := calculate.CalculateDailyMetrics(workouts, previousMetrics)
+	dailyMetric := calculate.CalculateDailyMetrics(validWorkouts, previousMetrics)
 	dailyMetric.UserID = userID
 	dailyMetric.Date = normalizedDate
 
 	// Merge с существующей записью если пользователь ввел метрики вручную
 	existing, err := s.dailyMetricsRepo.GetByUserIDAndDate(ctx, userID, normalizedDate)
 	if err != nil {
-		return err
+		return fmt.Errorf("RecalculateDailyMetricsForDate: %w", err)
 	}
 	if existing != nil {
 		// Сохраняем пользовательский ввод (не перезаписываем)

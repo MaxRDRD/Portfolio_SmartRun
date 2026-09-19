@@ -4,6 +4,8 @@ import (
 	"SmartRun/cmd/server"
 	db "SmartRun/internal/DB"
 	"SmartRun/internal/adapter/importer/fit"
+	"SmartRun/internal/adapter/llm"
+	"SmartRun/internal/broker/rabbitmq"
 	"SmartRun/internal/cache"
 	"SmartRun/internal/config"
 	myhttp "SmartRun/internal/handler/http"
@@ -12,6 +14,7 @@ import (
 	repopostgres "SmartRun/internal/repository_impl/postgres"
 	workoutpostgres "SmartRun/internal/repository_impl/postgres/workout"
 	"SmartRun/internal/usecase/service"
+	"SmartRun/internal/worker"
 	"context"
 	"fmt"
 	"net/http"
@@ -65,21 +68,60 @@ func main() {
 		log.Error("failed to create email service", "error", err,
 			"stack", string(debug.Stack()))
 	}
-	userService := service.NewUserService(userRepo, sessionRepo, totpRepo, passwResetRepo, emailService, cfg, txManager, validator)
+	
+	rabbitURL := os.Getenv("RABBITMQ_URL")
+	if rabbitURL == "" {
+		rabbitURL = "amqp://smartrun:smartrun@localhost:5672/"
+	}
+	publisher, err := rabbitmq.NewRabbitMQPublisher(rabbitURL)
+	if err != nil {
+		log.Error("failed to initialize rabbitmq publisher", "error", err, "stack", string(debug.Stack()))
+		panic(err)
+	}
+	defer publisher.Close()
+
+	userService := service.NewUserService(userRepo, sessionRepo, totpRepo, passwResetRepo, emailService, cfg, txManager, validator, publisher)
 	userHandler := myhttp.NewUserHandler(userService)
 
 	workoutRepo := workoutpostgres.NewWorkoutRepository(pool)
 	dailyMetricsRepo := repopostgres.NewDailyMetricRepository(pool)
 	parser := fit.NewMuktihariFitParser()
-	workoutService := service.NewWorkoutService(workoutRepo, dailyMetricsRepo, userRepo, parser, validator, txManager)
+	workoutService := service.NewWorkoutService(workoutRepo, dailyMetricsRepo, userRepo, parser, validator, txManager, publisher)
 	workoutHandler := myhttp.NewWorkoutHandler(workoutService)
+
+	dailyMetricsService := service.NewDailyMetricService(dailyMetricsRepo, workoutRepo, validator, txManager, publisher)
+	dailyMetricsHandler := myhttp.NewDailyMetricHandler(dailyMetricsService)
+
+	workerPool, err := worker.NewWorkerPool(rabbitURL)
+	if err != nil {
+		log.Error("failed to initialize worker pool", "error", err, "stack", string(debug.Stack()))
+		panic(err)
+	}
+	defer workerPool.Close()
+
+	metricsWorker := worker.NewMetricsWorker(workoutService)
+	if err := workerPool.StartConsumer(rabbitmq.MetricsQueue, metricsWorker); err != nil {
+		log.Error("failed to start metrics worker", "error", err)
+	}
+
+	emailWorker := worker.NewEmailWorker(emailService)
+	if err := workerPool.StartConsumer(rabbitmq.PasswordResetQueue, emailWorker); err != nil {
+		log.Error("failed to start email worker", "error", err)
+	}
+
+	aiCoach, err := llm.NewGeminiCoach(context.Background())
+	if err != nil {
+		log.Warn("failed to initialize AI coach, advice generation will be disabled", "error", err)
+	} else {
+		aiCoachWorker := worker.NewAICoachWorker(aiCoach, dailyMetricsService, workoutService)
+		if err := workerPool.StartConsumer(rabbitmq.AICoachQueue, aiCoachWorker); err != nil {
+			log.Error("failed to start ai coach worker", "error", err)
+		}
+	}
 
 	metricsRepo := repopostgres.NewMetricsRepository(pool, cacheStore)
 	metricsService := service.NewMetricsService(metricsRepo, validator)
 	metricsHandler := myhttp.NewMetricHandler(metricsService)
-
-	dailyMetricsService := service.NewDailyMetricService(dailyMetricsRepo, workoutRepo, validator, txManager)
-	dailyMetricsHandler := myhttp.NewDailyMetricHandler(dailyMetricsService)
 
 	s, err := gocron.NewScheduler()
 	if err != nil {

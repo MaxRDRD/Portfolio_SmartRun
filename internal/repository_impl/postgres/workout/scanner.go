@@ -1,6 +1,9 @@
 package postgres
 
-import "SmartRun/internal/model"
+import (
+	"SmartRun/internal/model"
+	"fmt"
+)
 
 // scanner задает минимальный контракт для pgx.Row и pgx.Rows.
 type scanner interface {
@@ -42,9 +45,11 @@ func (r *workoutRepository) scanWorkoutRow(row scanner) (*model.Workouts, error)
 		&workout.Efficiency,
 		&workout.PrimaryTrainingFocus,
 		&workout.ElevationLoss,
+		&workout.IsAnomalous,
+		&workout.AnomalyReason,
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("scanWorkoutRow: %w", err)
 	}
 
 	workout.TimeInHrZone = toIntSlice(timeInHrZone)

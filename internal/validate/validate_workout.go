@@ -76,6 +76,10 @@ func ApplyUpdateRequest(w *model.Workouts, req dto.UpdateRequest) {
 		w.RPE = req.RPE
 	}
 
+	if req.Feel != nil {
+		w.Feel = req.Feel
+	}
+
 	if req.Notes != nil {
 		w.Notes = *req.Notes
 	}

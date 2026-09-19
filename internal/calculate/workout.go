@@ -51,13 +51,16 @@ func CalculateDerivedMetrics(workout *model.Workouts, u *model.User) {
 	workout.TrainingStressScore = nil
 	workout.TrainingLoad = nil
 
-	if workout.Pace > 0 && workout.Duration > 0 {
+	if workout.Duration > 0 {
+		durationHours := float64(workout.Duration) / 3600.0
 		ifValue := 0.0
 
-		if u.ThresholdPace > 0 {
-			ifValue = u.ThresholdPace / workout.Pace
-		} else if workout.AvgHR != nil && maxHR > 0 {
-			ifValue = float64(*workout.AvgHR) / float64(maxHR) * 1.08 // чуть выше, чтобы гонки не занижались
+		if workout.Pace > 0 {
+			if u.ThresholdPace > 0 {
+				ifValue = u.ThresholdPace / workout.Pace
+			} else if workout.AvgHR != nil && maxHR > 0 {
+				ifValue = float64(*workout.AvgHR) / float64(maxHR) * 1.08 // чуть выше, чтобы гонки не занижались
+			}
 		}
 
 		if ifValue > 0 {
@@ -65,10 +68,20 @@ func CalculateDerivedMetrics(workout *model.Workouts, u *model.User) {
 			ifRounded := math.Round(ifValue*100) / 100
 			workout.IntensityFactor = &ifRounded
 
-			durationHours := float64(workout.Duration) / 3600.0
 			tss := durationHours * ifValue * ifValue * 100
+
+			if workout.RPE != nil && *workout.RPE > 0 {
+				rpeTSS := durationHours * float64(*workout.RPE) * 10.0
+				tss = (tss + rpeTSS) / 2.0
+			}
+
 			tssRounded := math.Round(tss*10) / 10
 
+			workout.TrainingStressScore = &tssRounded
+			workout.TrainingLoad = &tssRounded
+		} else if workout.RPE != nil && *workout.RPE > 0 {
+			rpeTSS := durationHours * float64(*workout.RPE) * 10.0
+			tssRounded := math.Round(rpeTSS*10) / 10
 			workout.TrainingStressScore = &tssRounded
 			workout.TrainingLoad = &tssRounded
 		}

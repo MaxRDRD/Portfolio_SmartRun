@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -27,7 +28,7 @@ type txKey struct{}
 func (t *txManager) WithTransaction(ctx context.Context, fn func(context.Context) error) (err error) {
 	tx, err := t.db.Begin(ctx)
 	if err != nil {
-		return err
+		return fmt.Errorf("WithTransaction: %w", err)
 	}
 
 	// Важно: defer с обработкой panic + err
@@ -52,7 +53,7 @@ func (t *txManager) WithTransaction(ctx context.Context, fn func(context.Context
 
 	ctx = context.WithValue(ctx, txKey{}, tx)
 	err = fn(ctx)
-	return err
+	return fmt.Errorf("WithTransaction: %w", err)
 }
 
 // Вспомогательная функция для репозиториев

@@ -26,70 +26,70 @@ func buildWorkoutFilterFromQuery(r *http.Request, userID int64) (dto.WorkoutFilt
 
 	from, err := parseDatePtr(q.Get("from"), "from")
 	if err != nil {
-		return dto.WorkoutFilter{}, err
+		return dto.WorkoutFilter{}, fmt.Errorf("buildWorkoutFilterFromQuery: %w", err)
 	}
 	to, err := parseDatePtr(q.Get("to"), "to")
 	if err != nil {
-		return dto.WorkoutFilter{}, err
+		return dto.WorkoutFilter{}, fmt.Errorf("buildWorkoutFilterFromQuery: %w", err)
 	}
 
 	minDistance, err := parseFloatPtr(q.Get("min_distance"), "min_distance")
 	if err != nil {
-		return dto.WorkoutFilter{}, err
+		return dto.WorkoutFilter{}, fmt.Errorf("buildWorkoutFilterFromQuery: %w", err)
 	}
 	maxDistance, err := parseFloatPtr(q.Get("max_distance"), "max_distance")
 	if err != nil {
-		return dto.WorkoutFilter{}, err
+		return dto.WorkoutFilter{}, fmt.Errorf("buildWorkoutFilterFromQuery: %w", err)
 	}
 
 	minDuration, err := parseIntPtr(q.Get("min_duration"), "min_duration")
 	if err != nil {
-		return dto.WorkoutFilter{}, err
+		return dto.WorkoutFilter{}, fmt.Errorf("buildWorkoutFilterFromQuery: %w", err)
 	}
 	maxDuration, err := parseIntPtr(q.Get("max_duration"), "max_duration")
 	if err != nil {
-		return dto.WorkoutFilter{}, err
+		return dto.WorkoutFilter{}, fmt.Errorf("buildWorkoutFilterFromQuery: %w", err)
 	}
 
 	minAvgHR, err := parseIntPtr(q.Get("min_avg_hr"), "min_avg_hr")
 	if err != nil {
-		return dto.WorkoutFilter{}, err
+		return dto.WorkoutFilter{}, fmt.Errorf("buildWorkoutFilterFromQuery: %w", err)
 	}
 	maxAvgHR, err := parseIntPtr(q.Get("max_avg_hr"), "max_avg_hr")
 	if err != nil {
-		return dto.WorkoutFilter{}, err
+		return dto.WorkoutFilter{}, fmt.Errorf("buildWorkoutFilterFromQuery: %w", err)
 	}
 
 	minPace, err := parseFloatPtr(q.Get("min_pace"), "min_pace")
 	if err != nil {
-		return dto.WorkoutFilter{}, err
+		return dto.WorkoutFilter{}, fmt.Errorf("buildWorkoutFilterFromQuery: %w", err)
 	}
 	maxPace, err := parseFloatPtr(q.Get("max_pace"), "max_pace")
 	if err != nil {
-		return dto.WorkoutFilter{}, err
+		return dto.WorkoutFilter{}, fmt.Errorf("buildWorkoutFilterFromQuery: %w", err)
 	}
 
 	minRPE, err := parseIntPtr(q.Get("min_rpe"), "min_rpe")
 	if err != nil {
-		return dto.WorkoutFilter{}, err
+		return dto.WorkoutFilter{}, fmt.Errorf("buildWorkoutFilterFromQuery: %w", err)
 	}
 	maxRPE, err := parseIntPtr(q.Get("max_rpe"), "max_rpe")
 	if err != nil {
-		return dto.WorkoutFilter{}, err
+		return dto.WorkoutFilter{}, fmt.Errorf("buildWorkoutFilterFromQuery: %w", err)
 	}
 
 	hasNotes, err := parseBoolPtr(q.Get("has_notes"), "has_notes")
 	if err != nil {
-		return dto.WorkoutFilter{}, err
+		return dto.WorkoutFilter{}, fmt.Errorf("buildWorkoutFilterFromQuery: %w", err)
 	}
 	hasHRZones, err := parseBoolPtr(q.Get("has_hr_zones"), "has_hr_zones")
 	if err != nil {
-		return dto.WorkoutFilter{}, err
+		return dto.WorkoutFilter{}, fmt.Errorf("buildWorkoutFilterFromQuery: %w", err)
 	}
 
 	limit, err := parseIntWithDefault(q.Get("limit"), "limit", 20)
 	if err != nil {
-		return dto.WorkoutFilter{}, err
+		return dto.WorkoutFilter{}, fmt.Errorf("buildWorkoutFilterFromQuery: %w", err)
 	}
 	if limit <= 0 {
 		return dto.WorkoutFilter{}, &queryParamError{Param: "limit", Value: q.Get("limit"), Msg: "must be > 0"}
@@ -97,7 +97,7 @@ func buildWorkoutFilterFromQuery(r *http.Request, userID int64) (dto.WorkoutFilt
 
 	offset, err := parseIntWithDefault(q.Get("offset"), "offset", 0)
 	if err != nil {
-		return dto.WorkoutFilter{}, err
+		return dto.WorkoutFilter{}, fmt.Errorf("buildWorkoutFilterFromQuery: %w", err)
 	}
 	if offset < 0 {
 		return dto.WorkoutFilter{}, &queryParamError{Param: "offset", Value: q.Get("offset"), Msg: "must be >= 0"}

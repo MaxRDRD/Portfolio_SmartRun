@@ -39,11 +39,11 @@ func (r *workoutRepository) Create(ctx context.Context, workout *model.Workouts)
             notes, shoes, vo2max_estimate, aerobic_training_effect,
 			anaerobic_training_effect, training_load, training_stress_score,
 			intensity_factor, avg_stress, sdrr_hrv, rmssd_hrv, time_in_hr_zone, recovery_time,
-			rpe, efficiency, primary_training_focus, elevation_loss
+			rpe, efficiency, primary_training_focus, elevation_loss, is_anomalous, anomaly_reason
         ) VALUES (
             $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
 			$13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24,
-			$25, $26, $27, $28, $29
+			$25, $26, $27, $28, $29, $30, $31
         )
         RETURNING id, created_at
     `
@@ -77,9 +77,11 @@ func (r *workoutRepository) Create(ctx context.Context, workout *model.Workouts)
 		workout.Efficiency,
 		workout.PrimaryTrainingFocus,
 		workout.ElevationLoss,
+		workout.IsAnomalous,
+		workout.AnomalyReason,
 	).Scan(&workout.ID, &workout.CreatedAt)
 	if err != nil {
-		return err
+		return fmt.Errorf("Create: %w", err)
 	}
 
 	if workout.ID > 0 {
@@ -212,8 +214,9 @@ func (r *workoutRepository) Update(ctx context.Context, workout *model.Workouts)
 		intensity_factor = $18, avg_stress = $19, sdrr_hrv = $20, rmssd_hrv = $21,
 		time_in_hr_zone = $22, recovery_time = $23, rpe = $24,
 		efficiency = $25, primary_training_focus = $26,
-		vo2max_estimate = $27, elevation_loss = $28
-		WHERE id = $29 AND user_id = $30
+		vo2max_estimate = $27, elevation_loss = $28,
+		is_anomalous = $29, anomaly_reason = $30
+		WHERE id = $31 AND user_id = $32
     `
 	tag, err := db.Exec(ctx, sqlQuery,
 		workout.Distance,
@@ -244,6 +247,8 @@ func (r *workoutRepository) Update(ctx context.Context, workout *model.Workouts)
 		workout.PrimaryTrainingFocus,
 		workout.VO2MaxEstimate,
 		workout.ElevationLoss,
+		workout.IsAnomalous,
+		workout.AnomalyReason,
 		workout.ID,
 		workout.UserID,
 	)

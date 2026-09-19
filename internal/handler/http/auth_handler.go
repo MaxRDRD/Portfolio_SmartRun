@@ -130,8 +130,8 @@ func (h *UserHandler) Login(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusAccepted) // 202 Accepted - требуется дополнительное действие
 		_ = json.NewEncoder(w).Encode(dto.AuthResponse{
-			AccessToken: "",              // пусто!
-			ExpiresIn:   0,               // пусто!
+			AccessToken: "", // пусто!
+			ExpiresIn:   0,  // пусто!
 			Require2FA:  true,
 			Message:     "2FA required - call /verify-2fa with TOTP code",
 		})

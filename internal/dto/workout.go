@@ -3,33 +3,34 @@ package dto
 import "time"
 
 type WorkoutsResponse struct {
-	ID                      int64    `json:"id"`
-	Date                    string   `json:"date"`
-	TypeActivity            string   `json:"type_activity"`
-	Distance                float64  `json:"distance"`
-	Duration                int      `json:"duration"`
-	Pace                    float64  `json:"pace"` // или string "4:19"
-	AvgCadence              *int     `json:"avg_cadence"`
-	ElevationGain           *float64 `json:"elevation_gain"`
-	ElevationLoss           *float64 `json:"elevation_loss"`
-	AvgHR                   *int     `json:"avg_hr"`
-	MaxHR                   *int     `json:"max_hr"`
-	Calories                *int     `json:"calories"`
-	VO2MaxEstimate          *float64 `json:"vo2max_estimate,omitempty"`
-	RecoveryTime            *int     `json:"recovery_time,omitempty"`
-	TrainingLoad            *float64 `json:"training_load,omitempty"`
-	TrainingStressScore     *float64 `json:"training_stress_score,omitempty"`
-	IntensityFactor         *float64 `json:"intensity_factor,omitempty"`
-	AvgStress               *int     `json:"avg_stress,omitempty"`
-	SdrrHrv                 *int     `json:"sdrr_hrv,omitempty"`
-	RmssdHrv                *int     `json:"rmssd_hrv,omitempty"`
-	PerceivedEffort         *int     `json:"perceived_effort,omitempty"`
+	ID                      int64           `json:"id"`
+	Date                    string          `json:"date"`
+	TypeActivity            string          `json:"type_activity"`
+	Distance                float64         `json:"distance"`
+	Duration                int             `json:"duration"`
+	Pace                    float64         `json:"pace"` // или string "4:19"
+	AvgCadence              *int            `json:"avg_cadence"`
+	ElevationGain           *float64        `json:"elevation_gain"`
+	ElevationLoss           *float64        `json:"elevation_loss"`
+	AvgHR                   *int            `json:"avg_hr"`
+	MaxHR                   *int            `json:"max_hr"`
+	Calories                *int            `json:"calories"`
+	VO2MaxEstimate          *float64        `json:"vo2max_estimate,omitempty"`
+	RecoveryTime            *int            `json:"recovery_time,omitempty"`
+	TrainingLoad            *float64        `json:"training_load,omitempty"`
+	TrainingStressScore     *float64        `json:"training_stress_score,omitempty"`
+	IntensityFactor         *float64        `json:"intensity_factor,omitempty"`
+	AvgStress               *int            `json:"avg_stress,omitempty"`
+	SdrrHrv                 *int            `json:"sdrr_hrv,omitempty"`
+	RmssdHrv                *int            `json:"rmssd_hrv,omitempty"`
+	PerceivedEffort         *int            `json:"perceived_effort,omitempty"`
+	Feel                    *int            `json:"feel,omitempty"`
 	HRZones                 *HRZonesRequest `json:"hr_zones,omitempty"`
-	Notes                   string   `json:"notes,omitempty"`
-	Shoes                   string   `json:"shoes,omitempty"`
-	PrimaryTrainingFocus    string   `json:"primary_training_focus"`
-	AerobicTrainingEffect   *float64 `json:"aerobic_training_effect"`
-	AnaerobicTrainingEffect *float64 `json:"anaerobic_training_effect"`
+	Notes                   string          `json:"notes,omitempty"`
+	Shoes                   string          `json:"shoes,omitempty"`
+	PrimaryTrainingFocus    string          `json:"primary_training_focus"`
+	AerobicTrainingEffect   *float64        `json:"aerobic_training_effect"`
+	AnaerobicTrainingEffect *float64        `json:"anaerobic_training_effect"`
 }
 
 type CreateRequest struct {
@@ -46,7 +47,8 @@ type CreateRequest struct {
 	ElevationGain *float64 `json:"elevation_gain,omitempty"`
 	ElevationLoss *float64 `json:"elevation_loss,omitempty"`
 
-	RPE   *int    `json:"rpe,omitempty"` // Perceived Effort 1–10
+	RPE   *int    `json:"rpe,omitempty"`  // Perceived Effort 1–10
+	Feel  *int    `json:"feel,omitempty"` // 1-5
 	Notes *string `json:"notes,omitempty"`
 	Shoes *string `json:"shoes,omitempty"`
 
@@ -67,6 +69,7 @@ type UpdateRequest struct {
 	ElevationGain *float64        `json:"elevation_gain,omitempty"`
 	ElevationLoss *float64        `json:"elevation_loss,omitempty"`
 	RPE           *int            `json:"rpe,omitempty"`
+	Feel          *int            `json:"feel,omitempty"`
 	Notes         *string         `json:"notes,omitempty"`
 	Shoes         *string         `json:"shoes,omitempty"`
 	IsFullReplace bool            `json:"is_full_replace,omitempty"` // если true, то это полная замена (PUT), иначе частичное обновление (PATCH)

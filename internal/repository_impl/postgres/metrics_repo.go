@@ -224,7 +224,7 @@ func (r *metricsRepository) GetAllMetricsByID(ctx context.Context, filter dto.Me
 		return &metrics, nil
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("GetAllMetricsByID: %w", err)
 	}
 	return res.(*model.Metrics), nil
 

@@ -25,18 +25,21 @@ type Workouts struct {
 
 	PrimaryTrainingFocus string // "Aerobic", "Threshold", "VO2max", "Anaerobic", "Anaerobic Power"
 
-	TrainingLoad *float64
+	TrainingLoad        *float64
 	TrainingStressScore *float64
-	IntensityFactor *float64
-	RecoveryTime *int
-	RPE          *int // субъективная нагрузка 1–10
-	AvgStress    *int
-	SdrrHrv      *int
-	RmssdHrv     *int
-	TimeInHrZone []int
-	Notes        string
-	Shoes        string
-	Efficiency   *float64
+	IntensityFactor     *float64
+	RecoveryTime        *int
+	RPE                 *int // субъективная нагрузка 1–10
+	Feel                *int // самочувствие 1-5
+	AvgStress           *int
+	SdrrHrv             *int
+	RmssdHrv            *int
+	TimeInHrZone        []int
+	Notes               string
+	Shoes               string
+	Efficiency          *float64
+	IsAnomalous         bool
+	AnomalyReason       *string
 }
 
 type Split struct {

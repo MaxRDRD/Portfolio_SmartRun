@@ -118,6 +118,7 @@ func NewServer(userHandler *myhttp.UserHandler,
 			r.With(userLimiter).Put("/daily-metrics/{id}", dailyMetricsHandler.UpdateDailyMetric)
 			r.With(userLimiter).Get("/daily-metrics/{id}", dailyMetricsHandler.GetDailyMetricByID)
 			r.With(userLimiter).Delete("/daily-metrics/{id}", dailyMetricsHandler.DeleteDailyMetric)
+			r.With(userLimiter).Post("/daily-metrics/generate-advice", dailyMetricsHandler.GenerateAdvice)
 		})
 	})
 

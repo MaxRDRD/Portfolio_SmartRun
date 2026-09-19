@@ -28,6 +28,7 @@ func ToWorkoutsResponse(w *model.Workouts) dto.WorkoutsResponse {
 		SdrrHrv:                 w.SdrrHrv,
 		RmssdHrv:                w.RmssdHrv,
 		PerceivedEffort:         w.RPE, // если поле RPE int в модели
+		Feel:                    w.Feel,
 		HRZones:                 toHRZonesResponse(w.TimeInHrZone),
 		Notes:                   w.Notes,
 		Shoes:                   w.Shoes,

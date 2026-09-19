@@ -5,6 +5,7 @@ import (
 	"SmartRun/pkg/my_errors"
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -33,7 +34,7 @@ func (r *passwordResetRepo) CreateResetToken(ctx context.Context, userID int64, 
         VALUES ($1, $2, $3)
     `
 	_, err := db.Exec(ctx, query, userID, tokenHash, expiresAt)
-	return err
+	return fmt.Errorf("CreateResetToken: %w", err)
 }
 
 func (r *passwordResetRepo) FindResetByTokenHash(ctx context.Context, tokenHash string) (userID int64, used bool, err error) {
@@ -49,7 +50,7 @@ func (r *passwordResetRepo) FindResetByTokenHash(ctx context.Context, tokenHash 
 	if errors.Is(err, pgx.ErrNoRows) {
 		return 0, false, my_errors.ErrTokenNotFound
 	}
-	return userID, used, err
+	return userID, used, fmt.Errorf("FindResetByTokenHash: %w", err)
 }
 
 func (r *passwordResetRepo) MarkAsUsed(ctx context.Context, tokenHash string) error {
@@ -63,7 +64,7 @@ func (r *passwordResetRepo) MarkAsUsed(ctx context.Context, tokenHash string) er
 
 	tag, err := db.Exec(ctx, query, true, tokenHash)
 	if err != nil {
-		return err
+		return fmt.Errorf("MarkAsUsed: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
 		return my_errors.ErrPasswordResetHashNotFount
@@ -100,7 +101,7 @@ func (r *passwordResetRepo) ConsumeResetToken(ctx context.Context, tokenHash str
 
 	tag, err := db.Exec(ctx, query, tokenHash, userID)
 	if err != nil {
-		return err
+		return fmt.Errorf("ConsumeResetToken: %w", err)
 	}
 
 	// Если 0 строк обновлено, значит:
@@ -123,7 +124,7 @@ func (r *passwordResetRepo) DeleteResetToken(ctx context.Context, tokenHash stri
 	`
 	tag, err := db.Exec(ctx, query, tokenHash)
 	if err != nil {
-		return err
+		return fmt.Errorf("DeleteResetToken: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
 		return my_errors.ErrPasswordResetHashNotFount
@@ -137,5 +138,5 @@ func (r *passwordResetRepo) CleanupExpiredResetTokens(ctx context.Context) error
 
 	query := `DELETE FROM password_resets WHERE expires_at < NOW()`
 	_, err := db.Exec(ctx, query)
-	return err
+	return fmt.Errorf("CleanupExpiredResetTokens: %w", err)
 }

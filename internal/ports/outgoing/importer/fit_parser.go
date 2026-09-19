@@ -45,8 +45,8 @@ type ActivityData struct {
 	AnaerobicTrainingEffect *float64 `json:"anaerobic_training_effect,omitempty"`
 	RPE                     *int     `json:"rpe,omitempty"` // если записано
 	AvgStress               *int     `json:"avg_stress,omitempty"`
-	SdrrHrv                *int     `json:"sdrr_hrv,omitempty"`
-	RmssdHrv               *int     `json:"rmssd_hrv,omitempty"`
+	SdrrHrv                 *int     `json:"sdrr_hrv,omitempty"`
+	RmssdHrv                *int     `json:"rmssd_hrv,omitempty"`
 
 	// Опционально: заметки / обувь (редко в FIT, но можно из developer fields)
 	Notes *string `json:"notes,omitempty"`

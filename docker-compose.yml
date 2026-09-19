@@ -27,6 +27,21 @@ services:
     ports:
       - "6379:6379"
 
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: smartrun-portfolio-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: smartrun
+      RABBITMQ_DEFAULT_PASS: smartrun
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 5s
+      timeout: 10s
+      retries: 10
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+
   migrate:
     image: migrate/migrate:v4.18.3
     container_name: smartrun-portfolio-migrate
@@ -47,11 +62,14 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
       migrate:
         condition: service_completed_successfully
     environment:
       CONN_STRING: postgres://smartrun:smartrun@db:5432/smartrun?sslmode=disable
       REDIS_URL: redis://redis:6379
+      RABBITMQ_URL: amqp://smartrun:smartrun@rabbitmq:5672/
       JWT_SECRET: dev-only-super-secret-change-me
       APP_PUBLIC_URL: http://localhost:8080
     ports:

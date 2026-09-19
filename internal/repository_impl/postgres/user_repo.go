@@ -1,4 +1,4 @@
-﻿package postgres
+package postgres
 
 import (
 	"SmartRun/internal/cache"
@@ -11,8 +11,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -85,7 +85,7 @@ func (r *userRepository) CreateUser(ctx context.Context, user *model.User) error
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 			return my_errors.ErrUserAlreadyExists
 		}
-		return err
+		return fmt.Errorf("CreateUser: %w", err)
 	}
 
 	return nil
@@ -140,7 +140,7 @@ func (r *userRepository) GetUserByEmail(ctx context.Context, email string) (*mod
 			return nil, my_errors.ErrUserNotFound
 		}
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("GetUserByEmail: %w", err)
 		}
 
 		if _, marshalErr := json.Marshal(&user); marshalErr == nil {
@@ -150,7 +150,7 @@ func (r *userRepository) GetUserByEmail(ctx context.Context, email string) (*mod
 		return &user, nil
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("GetUserByEmail: %w", err)
 	}
 
 	return res.(*model.User), nil
@@ -205,7 +205,7 @@ func (r *userRepository) GetUserByID(ctx context.Context, id int64) (*model.User
 			return nil, my_errors.ErrUserNotFound
 		}
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("GetUserByID: %w", err)
 		}
 
 		if _, marshalErr := json.Marshal(&user); marshalErr == nil {
@@ -215,7 +215,7 @@ func (r *userRepository) GetUserByID(ctx context.Context, id int64) (*model.User
 		return &user, nil
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("GetUserByID: %w", err)
 	}
 
 	return res.(*model.User), nil
@@ -239,7 +239,7 @@ func (r *userRepository) GetEmailByID(ctx context.Context, id int64) (string, er
 		return "", my_errors.ErrUserNotFound
 	}
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("GetEmailByID: %w", err)
 	}
 
 	r.cacheSet(ctx, key, email, 30*time.Minute)
@@ -257,7 +257,7 @@ func (r *userRepository) UpdatePassword(ctx context.Context, userID int64, newHa
         `
 	tag, err := db.Exec(ctx, query, newHash, userID)
 	if err != nil {
-		return err
+		return fmt.Errorf("UpdatePassword: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
 		return my_errors.ErrUserNotFound
@@ -288,7 +288,7 @@ func (r *userRepository) UpdateUser(ctx context.Context, user *model.User) error
 		user.ID,
 	)
 	if err != nil {
-		return err
+		return fmt.Errorf("UpdateUser: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
 		return my_errors.ErrUserNotFound
