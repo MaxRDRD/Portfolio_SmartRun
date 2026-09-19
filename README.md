@@ -83,35 +83,35 @@
 ## 🏗 Архитектура системы
 
 ```mermaid
-graph TD
-    User([Пользователь]) -->|Браузер / Web UI| Frontend[Встроенный Web UI (HTML/CSS/JS)]
-    Frontend -->|HTTP / REST API| Chi[Go HTTP Server (Chi + RateLimiters)]
+flowchart TD
+    User(["Пользователь"]) -->|Браузер / Web UI| Frontend["Встроенный Web UI (HTML/CSS/JS)"]
+    Frontend -->|HTTP / REST API| Chi["Go HTTP Server (Chi + RateLimiters)"]
     
-    subgraph "Core Backend"
-        Chi --> AuthMid[JWT & TOTP Middleware]
-        AuthMid --> Handlers[HTTP Handlers]
-        Handlers --> Services[Usecase Services]
+    subgraph CoreBackend ["Core Backend"]
+        Chi --> AuthMid["JWT & TOTP Middleware"]
+        AuthMid --> Handlers["HTTP Handlers"]
+        Handlers --> Services["Usecase Services"]
         
-        Services --> Anomaly[Anomaly Detector]
-        Services --> Science[Sports Science Engine]
-        Services --> FitParser[Native FIT Parser]
-        Services --> TxMgr[Transaction Manager]
+        Services --> Anomaly["Anomaly Detector"]
+        Services --> Science["Sports Science Engine"]
+        Services --> FitParser["Native FIT Parser"]
+        Services --> TxMgr["Transaction Manager"]
     end
 
-    subgraph "Хранение и кэш"
-        TxMgr --> Postgres[(PostgreSQL 16)]
-        Services --> RedisCache[(Redis 7 Cache)]
+    subgraph Storage ["Хранение и кэш"]
+        TxMgr --> Postgres[("PostgreSQL 16")]
+        Services --> RedisCache[("Redis 7 Cache")]
     end
 
-    subgraph "Асинхронная шина событий"
-        Services -->|Публикация событий| RabbitMQ[RabbitMQ Broker]
-        RabbitMQ --> W1[Metrics Worker]
-        RabbitMQ --> W2[AI Coach Worker]
-        RabbitMQ --> W3[Email Worker]
+    subgraph EventBus ["Асинхронная шина событий"]
+        Services -->|Публикация событий| RabbitMQ["RabbitMQ Broker"]
+        RabbitMQ --> W1["Metrics Worker"]
+        RabbitMQ --> W2["AI Coach Worker"]
+        RabbitMQ --> W3["Email Worker"]
     end
 
-    W2 -->|Анализ контекста| Gemini[Google Gemini LLM API]
-    W3 -->|SMTP| MailServer[Почтовый сервис]
+    W2 -->|Анализ контекста| Gemini["Google Gemini LLM API"]
+    W3 -->|SMTP| MailServer["Почтовый сервис"]
     W1 --> TxMgr
 ```
 
