@@ -20,18 +20,15 @@ func CalculateReadiness(workouts []model.Workouts, previousMetrics *model.DailyM
 
 	tsb := ctl - atl
 
-	var fatigueScore float64
-	if ctl > 0.1 {
-		fatigueScore = (atl / ctl) * 100.0
-	} else {
-		fatigueScore = 0
-	}
-	fatigueScore = clampFloat(fatigueScore, 0, 100)
+	// Базовая готовность зависит от баланса тренировочного стресса (TSB = CTL - ATL).
+	// При TSB = 0 (баланс) базовая готовность равна 65% (нормальная работоспособность).
+	readinessBase := clampFloat(65.0+tsb*1.2, 10.0, 95.0)
+	fatigueScore := clampFloat(100.0-readinessBase, 0.0, 100.0)
 
-	readinessScore := clampFloat(100-fatigueScore, 0, 100)
+	readinessScore := readinessBase
 	readinessScore += recoveryBonusFromLatestWorkout(workouts)
 	readinessScore += multiFactorRecoveryAdjustment(workouts, previousMetrics)
-	readinessScore = clampFloat(readinessScore, 0, 100)
+	readinessScore = clampFloat(readinessScore, 0.0, 100.0)
 
 	recommendation := recommendationByTSB(tsb)
 
@@ -63,7 +60,7 @@ func rollingStress(workouts []model.Workouts, days int, thresholdPaceMinKm float
 	for i := 0; i < limit; i++ {
 		sum += workoutStressScore(workouts[i], thresholdPaceMinKm)
 	}
-	return sum / float64(limit)
+	return sum / float64(days)
 }
 
 func workoutStressScore(w model.Workouts, thresholdPaceMinKm float64) float64 {

@@ -9,12 +9,15 @@ import (
 // CalculateDailyMetrics рассчитывает дневную метрику на основе тренировок дня и истории.
 // workouts: отсортированы по дате (новые первые), обычно получены GetAllByUserID с фильтром по дате
 // previousMetrics: метрика предыдущего дня для инерции (может быть nil)
-func CalculateDailyMetrics(workouts []model.Workouts, previousMetrics *model.DailyMetric) *model.DailyMetric {
+// targetDate: опциональная целевая дата (по умолчанию дата последней тренировки или сегодня)
+func CalculateDailyMetrics(workouts []model.Workouts, previousMetrics *model.DailyMetric, targetDate ...time.Time) *model.DailyMetric {
 	readiness := CalculateReadiness(workouts, previousMetrics)
 	now := time.Now().UTC()
 	metricDate := normalizeDateUTC(now)
 
-	if len(workouts) > 0 {
+	if len(targetDate) > 0 {
+		metricDate = normalizeDateUTC(targetDate[0])
+	} else if len(workouts) > 0 {
 		metricDate = normalizeDateUTC(workouts[0].Date)
 	}
 
@@ -39,8 +42,17 @@ func CalculateDailyMetrics(workouts []model.Workouts, previousMetrics *model.Dai
 		}
 	}
 
-	if len(workouts) == 0 {
-		// Нет тренировок - нет streak, нет monotony/strain
+	// Проверяем, есть ли тренировки именно в целевой день (metricDate)
+	todayHasWorkout := false
+	for _, w := range workouts {
+		if normalizeDateUTC(w.Date).Equal(metricDate) {
+			todayHasWorkout = true
+			break
+		}
+	}
+
+	if !todayHasWorkout {
+		// Нет тренировок в целевой день - нет streak, нет monotony/strain
 		dailyMetric.StreakDays = 0
 		dailyMetric.Monotony = 0
 		dailyMetric.Strain = nil
@@ -54,13 +66,14 @@ func CalculateDailyMetrics(workouts []model.Workouts, previousMetrics *model.Dai
 	}
 
 	// UserID и дневные метрики берутся из тренировок сегодня
-	dailyMetric.UserID = workouts[0].UserID
+	if len(workouts) > 0 {
+		dailyMetric.UserID = workouts[0].UserID
+	}
 	dailyMetric.TotalCalories = sumCaloriesByDate(workouts, metricDate)
 	dailyMetric.StressAvg = avgStressByDate(workouts, metricDate)
 	dailyMetric.Monotony, dailyMetric.Strain = calcMonotonyAndStrain(workouts, metricDate)
 
 	// Streak обновляется инкрементально от предыдущего дня.
-	todayHasWorkout := len(workouts) > 0 && normalizeDateUTC(workouts[0].Date).Equal(metricDate)
 	dailyMetric.StreakDays = calcStreakDaysIncremental(todayHasWorkout, previousMetrics)
 
 	// Если нет внешних данных батареи, рассчитываем из усталости
