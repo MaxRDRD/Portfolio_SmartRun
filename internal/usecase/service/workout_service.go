@@ -156,7 +156,7 @@ func (s *workoutService) Create(ctx context.Context, userID int64, req dto.Creat
 // GetByID получает тренировку по идентификатору и ID пользователя
 func (s *workoutService) GetByID(ctx context.Context, id int64, userID int64) (*model.Workouts, error) {
 	workout, err := s.workoutRepo.GetByID(ctx, id, userID)
-	if errors.Is(err, my_errors.ErrWorkoutNotFound) {
+	if err != nil {
 		return nil, fmt.Errorf("GetByID: %w", err)
 	}
 	return workout, nil
@@ -165,7 +165,7 @@ func (s *workoutService) GetByID(ctx context.Context, id int64, userID int64) (*
 // GetAllByID возвращает список тренировок пользователя с учетом фильтров
 func (s *workoutService) GetAllByID(ctx context.Context, filter dto.WorkoutFilter) ([]model.Workouts, error) {
 	workouts, err := s.workoutRepo.GetAllByUserID(ctx, filter)
-	if errors.Is(err, my_errors.ErrWorkoutNotFound) {
+	if err != nil {
 		return nil, fmt.Errorf("GetAllByID: %w", err)
 	}
 	return workouts, nil
@@ -196,8 +196,10 @@ func (s *workoutService) Delete(ctx context.Context, id, userID int64) error {
 			logger.FromContext(ctx).Warn("workouts/delete: failed to publish metrics recalculation event", "error", pubErr)
 		}
 	}
-
-	return fmt.Errorf("Delete: %w", err)
+	if err != nil {
+		return fmt.Errorf("Delete: %w", err)
+	}
+	return nil
 }
 
 // Update обновляет данные тренировки и пересчитывает метрики

@@ -6,18 +6,18 @@ import (
 	"strings"
 )
 
-// CheckForAnomalies checks a workout for anomalous data (like superhuman pace, impossible HR).
-// Returns (true, "reason") if an anomaly is found, otherwise (false, "").
+// CheckForAnomalies проверяет тренировку на наличие аномальных данных
+// (например, сверхчеловеческого темпа или невозможной частоты пульса).
 func CheckForAnomalies(w *model.Workouts) (bool, string) {
 	var reasons []string
 
-	// Pace check (minutes per kilometer)
-	// < 2.0 min/km is faster than world record sprint over long distance
+	// Проверка темпа (минут на километр)
+	// < 2,0 мин/км — быстрее мирового рекорда в спринте на длинной дистанции
 	if w.Pace > 0 && w.Pace < 2.0 {
 		reasons = append(reasons, fmt.Sprintf("Pace is unusually fast: %.2f min/km", w.Pace))
 	}
-	// > 30.0 min/km is basically not moving
-	if w.Pace > 30.0 {
+	// > 20,0 мин/км — это, по сути, отсутствие движения
+	if w.Pace > 20.0 {
 		reasons = append(reasons, fmt.Sprintf("Pace is unusually slow: %.2f min/km", w.Pace))
 	}
 

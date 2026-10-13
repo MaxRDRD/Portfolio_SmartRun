@@ -179,10 +179,12 @@ func (s *authService) Register(ctx context.Context, req dto.RegisterRequest) (*d
 
 	if err != nil {
 		log.Error("auth service: register failed", "email", req.Email, "error", err)
-	} else if result != nil && result.User != nil {
+		return nil, fmt.Errorf("Register: %w", err)
+	}
+	if result != nil && result.User != nil {
 		log.Info("auth service: register success", "user_id", result.User.ID, "email", result.User.Email)
 	}
-	return result, fmt.Errorf("Register: %w", err)
+	return result, nil
 }
 
 func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (*dto.AuthResult, error) {
@@ -261,10 +263,12 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (*dto.Aut
 
 	if err != nil {
 		log.Error("auth service: login failed", "email", req.Email, "error", err)
-	} else if result != nil && result.User != nil {
+		return nil, fmt.Errorf("Login: %w", err)
+	}
+	if result != nil && result.User != nil {
 		log.Info("auth service: login success", "user_id", result.User.ID, "email", result.User.Email)
 	}
-	return result, fmt.Errorf("Login: %w", err)
+	return result, nil
 
 }
 
@@ -370,12 +374,18 @@ func (s *authService) UpdateUser(ctx context.Context, userID int64, req dto.Upda
 
 func (s *authService) GetEmailByID(ctx context.Context, id int64) (string, error) {
 	email, err := s.userRepo.GetEmailByID(ctx, id)
-	return email, fmt.Errorf("GetEmailByID: %w", err)
+	if err != nil {
+		return "", fmt.Errorf("GetEmailByID: %w", err)
+	}
+	return email, nil
 }
 
 func (s *authService) DeleteRefreshToken(ctx context.Context, refresh_hash string) error {
 	err := s.sessionRepo.DeleteSessionByHash(ctx, refresh_hash)
-	return fmt.Errorf("DeleteRefreshToken: %w", err)
+	if err != nil {
+		return fmt.Errorf("DeleteRefreshToken: %w", err)
+	}
+	return nil
 }
 
 func (s *authService) Logout(ctx context.Context, refreshToken string) error {
@@ -397,18 +407,6 @@ func (s *authService) Refresh(ctx context.Context, refreshToken string) (*dto.Au
 
 	var result *dto.AuthResult
 
-	// КРИТИЧНО: все операции внутри одной транзакции для защиты от race condition!
-	//
-	// Одновременный refresh (напр., пользователь с мобилки + браузера):
-	//   Запрос A: вызвал Refresh              | Запрос B: вызвал Refresh
-	//            ↓                            |
-	//   ConsumeSessionByHash (первый)         | ConsumeSessionByHash (ждёт БД lock)
-	//            ↓                            |
-	//   CreateSession → новый refresh токен A | pgx.ErrNoRows (токен уже удалён!)
-	//            ↓                            |
-	//   Успех! Вернуть TokenA                 | Ошибка: ErrTokenNotFound
-	//
-	// Результат: ТОЛЬКО запрос A получит новый токен безопасно!
 	err := s.txManager.WithTransaction(ctx, func(ctx context.Context) error {
 		// АТОМАРНО: удалить старую сессию и получить user_id
 		// Если токен уже удалён, вернётся ErrTokenNotFound (не пройдём дальше)
@@ -427,7 +425,7 @@ func (s *authService) Refresh(ctx context.Context, refreshToken string) (*dto.Au
 			return fmt.Errorf("Refresh: %w", err)
 		}
 
-		// 3️⃣ Генерируем новый access-токен
+		//  Генерируем новый access-токен
 		newAccess, err := auth.GenerateAccessToken(userID, s.cfg.AccessTokenTTL)
 		if err != nil {
 			return fmt.Errorf("Refresh: %w", err)
@@ -440,8 +438,10 @@ func (s *authService) Refresh(ctx context.Context, refreshToken string) (*dto.Au
 		}
 		return nil
 	})
-
-	return result, fmt.Errorf("Refresh: %w", err)
+	if err != nil {
+		return nil, fmt.Errorf("Refresh: %w", err)
+	}
+	return result, nil
 }
 
 func (s *authService) EnableTOTP(ctx context.Context, userID int64, email string) (string, []byte, error) {

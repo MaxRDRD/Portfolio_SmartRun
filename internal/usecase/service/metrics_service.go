@@ -79,28 +79,30 @@ func (s *metricService) GetMetrics(ctx context.Context, filter dto.MetricsFilter
 	filter = normalizeMetricsFilter(filter)
 	log := logger.FromContext(ctx).With("user_id", filter.UserID)
 	metric, err := s.repo.GetMetricsByID(ctx, filter)
-	if errors.Is(err, my_errors.ErrMetricNotFound) {
-		log.Warn("metrics service: get not found")
+	if err != nil {
+		if errors.Is(err, my_errors.ErrMetricNotFound) {
+			log.Warn("metrics service: get not found")
+		} else {
+			log.Error("metrics service: get failed", "error", err)
+		}
 		return nil, fmt.Errorf("GetMetrics: %w", err)
 	}
-	if err != nil {
-		log.Error("metrics service: get failed", "error", err)
-	}
-	return metric, fmt.Errorf("GetMetrics: %w", err)
+	return metric, nil
 }
 
 func (s *metricService) GetAllMetrics(ctx context.Context, filter dto.MetricsFilter) (*model.Metrics, error) {
 	filter = normalizeMetricsFilter(filter)
 	log := logger.FromContext(ctx).With("user_id", filter.UserID)
 	metric, err := s.repo.GetAllMetricsByID(ctx, filter)
-	if errors.Is(err, my_errors.ErrMetricNotFound) {
-		log.Warn("metrics service: get-all not found")
+	if err != nil {
+		if errors.Is(err, my_errors.ErrMetricNotFound) {
+			log.Warn("metrics service: get-all not found")
+		} else {
+			log.Error("metrics service: get-all failed", "error", err)
+		}
 		return nil, fmt.Errorf("GetAllMetrics: %w", err)
 	}
-	if err != nil {
-		log.Error("metrics service: get-all failed", "error", err)
-	}
-	return metric, fmt.Errorf("GetAllMetrics: %w", err)
+	return metric, nil
 }
 
 func (s *metricService) UpdateMetrics(ctx context.Context, metrics model.Metrics) (*model.Metrics, error) {

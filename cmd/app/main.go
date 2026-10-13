@@ -36,7 +36,7 @@ func main() {
 	if err != nil {
 		log.Error("failed to create database pool", "error", err,
 			"stack", string(debug.Stack()))
-		panic(err)
+		os.Exit(1)
 	}
 	validator := validator.New()
 	cacheStore := cache.NewNoopCache()
@@ -68,7 +68,7 @@ func main() {
 		log.Error("failed to create email service", "error", err,
 			"stack", string(debug.Stack()))
 	}
-	
+
 	rabbitURL := os.Getenv("RABBITMQ_URL")
 	if rabbitURL == "" {
 		rabbitURL = "amqp://smartrun:smartrun@localhost:5672/"
@@ -76,7 +76,7 @@ func main() {
 	publisher, err := rabbitmq.NewRabbitMQPublisher(rabbitURL)
 	if err != nil {
 		log.Error("failed to initialize rabbitmq publisher", "error", err, "stack", string(debug.Stack()))
-		panic(err)
+		os.Exit(1)
 	}
 	defer publisher.Close()
 
@@ -95,7 +95,7 @@ func main() {
 	workerPool, err := worker.NewWorkerPool(rabbitURL)
 	if err != nil {
 		log.Error("failed to initialize worker pool", "error", err, "stack", string(debug.Stack()))
-		panic(err)
+		os.Exit(1)
 	}
 	defer workerPool.Close()
 

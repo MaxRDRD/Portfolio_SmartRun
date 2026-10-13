@@ -53,7 +53,10 @@ func (t *txManager) WithTransaction(ctx context.Context, fn func(context.Context
 
 	ctx = context.WithValue(ctx, txKey{}, tx)
 	err = fn(ctx)
-	return fmt.Errorf("WithTransaction: %w", err)
+	if err != nil {
+		return fmt.Errorf("WithTransaction: %w", err)
+	}
+	return nil
 }
 
 // Вспомогательная функция для репозиториев
