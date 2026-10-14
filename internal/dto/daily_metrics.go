@@ -11,7 +11,7 @@ type CreateDailyMetricRequest struct {
 }
 
 type UpdateDailyMetricRequest struct {
-	ID             int       `json:"id" validate:"required"`
+	ID             int64     `json:"id" validate:"required"`
 	UserID         int64     `json:"user_id"`
 	Date           time.Time `json:"date"`
 	CTL            float64   `json:"ctl"`

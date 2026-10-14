@@ -17,8 +17,8 @@ import (
 type DailyMetricService interface {
 	CreateDailyMetric(ctx context.Context, dailyMetric model.DailyMetric) (*model.DailyMetric, error)
 	UpdateDailyMetric(ctx context.Context, req dto.UpdateDailyMetricRequest) (*model.DailyMetric, error)
-	DeleteDailyMetric(ctx context.Context, id int) error
-	GetDailyMetricByID(ctx context.Context, id int) (*model.DailyMetric, error)
+	DeleteDailyMetric(ctx context.Context, id, userID int64) error
+	GetDailyMetricByID(ctx context.Context, id, userID int64) (*model.DailyMetric, error)
 	GetByUserIDAndDate(ctx context.Context, userID int64, date time.Time) (*model.DailyMetric, error)
 	GetAllDailyMetrics(ctx context.Context, userId int64) ([]model.DailyMetric, error)
 	TriggerAdviceGeneration(ctx context.Context, userID int64, date time.Time) error
@@ -70,7 +70,7 @@ func endOfDayUTC(t time.Time) time.Time {
 
 func (s *dailyMetricService) UpdateDailyMetric(ctx context.Context, req dto.UpdateDailyMetricRequest) (*model.DailyMetric, error) {
 	log := logger.FromContext(ctx)
-	existing, err := s.dailyMetricRepo.GetByID(ctx, req.ID)
+	existing, err := s.dailyMetricRepo.GetByID(ctx, req.ID, req.UserID)
 	if err != nil {
 		log.Error("daily metrics service: get existing failed", "id", req.ID, "error", err)
 		return nil, fmt.Errorf("UpdateDailyMetric: %w", err)
@@ -132,9 +132,9 @@ func (s *dailyMetricService) UpdateDailyMetric(ctx context.Context, req dto.Upda
 	return result, nil
 }
 
-func (s *dailyMetricService) DeleteDailyMetric(ctx context.Context, id int) error {
+func (s *dailyMetricService) DeleteDailyMetric(ctx context.Context, id, userID int64) error {
 	log := logger.FromContext(ctx)
-	err := s.dailyMetricRepo.Delete(ctx, id)
+	err := s.dailyMetricRepo.Delete(ctx, id, userID)
 	if err != nil {
 		log.Error("daily metrics service: delete failed", "id", id, "error", err)
 		return fmt.Errorf("DeleteDailyMetric: %w", err)
@@ -143,9 +143,9 @@ func (s *dailyMetricService) DeleteDailyMetric(ctx context.Context, id int) erro
 	return nil
 }
 
-func (s *dailyMetricService) GetDailyMetricByID(ctx context.Context, id int) (*model.DailyMetric, error) {
+func (s *dailyMetricService) GetDailyMetricByID(ctx context.Context, id, userID int64) (*model.DailyMetric, error) {
 	log := logger.FromContext(ctx)
-	dailyMetric, err := s.dailyMetricRepo.GetByID(ctx, id)
+	dailyMetric, err := s.dailyMetricRepo.GetByID(ctx, id, userID)
 	if err != nil {
 		log.Error("daily metrics service: get-by-id failed", "id", id, "error", err)
 		return nil, fmt.Errorf("GetDailyMetricByID: %w", err)

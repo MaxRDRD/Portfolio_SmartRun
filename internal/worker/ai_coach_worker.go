@@ -76,7 +76,7 @@ func (w *AICoachWorker) ProcessMessage(msg amqp.Delivery) error {
 	metric.Recommendation = advice
 
 	updateReq := dto.UpdateDailyMetricRequest{
-		ID:             int(metric.ID),
+		ID:             metric.ID,
 		UserID:         metric.UserID,
 		Date:           metric.Date,
 		CTL:            metric.CTL,

@@ -166,19 +166,27 @@ func (h *DailyMetricHandler) GetDailyMetrics(w http.ResponseWriter, r *http.Requ
 // GetDailyMetricByID возвращает ежедневную метрику по ее ID
 func (h *DailyMetricHandler) GetDailyMetricByID(w http.ResponseWriter, r *http.Request) {
 	log := logger.FromContext(r.Context())
+
 	idStr := chi.URLParam(r, "id")
 	if idStr == "" {
 		// Обратная совместимость для старых клиентов, использующих параметры запроса
 		idStr = r.URL.Query().Get("id")
 	}
-	id, err := strconv.Atoi(idStr)
+	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
 		log.Warn("daily-metrics/get-by-id: invalid id", "value", idStr, "error", err)
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
 
-	metric, err := h.service.GetDailyMetricByID(r.Context(), id)
+	userID, ok := auth.GetUserID(r.Context())
+	if !ok {
+		log.Warn("daily-metrics/get-by-id: unauthorized")
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	metric, err := h.service.GetDailyMetricByID(r.Context(), id, userID)
 	if err != nil {
 		if errors.Is(err, my_errors.ErrDailyMetricNotFound) {
 			log.Warn("daily-metrics/get-by-id: not found", "id", id)
@@ -243,14 +251,21 @@ func (h *DailyMetricHandler) DeleteDailyMetric(w http.ResponseWriter, r *http.Re
 		// Обратная совместимость для старых клиентов, использующих параметры запроса
 		idStr = r.URL.Query().Get("id")
 	}
-	id, err := strconv.Atoi(idStr)
+	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
 		log.Warn("daily-metrics/delete: invalid id", "value", idStr, "error", err)
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
 
-	err = h.service.DeleteDailyMetric(r.Context(), id)
+	userID, ok := auth.GetUserID(r.Context())
+	if !ok {
+		log.Warn("daily-metrics/delete: unauthorized")
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	err = h.service.DeleteDailyMetric(r.Context(), id, userID)
 	if err != nil {
 		if errors.Is(err, my_errors.ErrDailyMetricNotFound) {
 			log.Warn("daily-metrics/delete: not found", "id", id)

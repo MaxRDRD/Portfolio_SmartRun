@@ -11,14 +11,14 @@ var (
 	// token / session
 	ErrTokenNotFound    = errors.New("token not found")
 	ErrInvalidToken     = errors.New("invalid token")
-	ErrTokenAlreadyUsed = errors.New("token already used") // добавь для reset password
+	ErrTokenAlreadyUsed = errors.New("token already used")
 
 	// totp
 	ErrSecretNotFound = errors.New("secret not found")
 
 	// общие
 	ErrInvalidData = errors.New("invalid data")
-	ErrInternal    = errors.New("internal server error") // для 500 без утечек
+	ErrInternal    = errors.New("internal server error")
 
 	// metrics
 	ErrMetricNotFound = errors.New("workout not found")

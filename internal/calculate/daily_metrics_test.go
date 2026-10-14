@@ -109,20 +109,20 @@ func TestCalcMonotonyAndStrain(t *testing.T) {
 	anchor := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
 
 	tests := []struct {
-		name         string
-		workouts     []model.Workouts
-		anchorDate   time.Time
-		wantMonotony float64
+		name          string
+		workouts      []model.Workouts
+		anchorDate    time.Time
+		wantMonotony  float64
 		wantHasStrain bool
-		wantStrain   *float64
+		wantStrain    *float64
 	}{
 		{
-			name:         "Пустая неделя без тренировок",
-			workouts:     nil,
-			anchorDate:   anchor,
-			wantMonotony: 0.0,
+			name:          "Пустая неделя без тренировок",
+			workouts:      nil,
+			anchorDate:    anchor,
+			wantMonotony:  0.0,
 			wantHasStrain: false,
-			wantStrain:   nil,
+			wantStrain:    nil,
 		},
 		{
 			name: "Максимальная монотонность - одинаковый бег каждый день (7 дней)",
@@ -136,10 +136,10 @@ func TestCalcMonotonyAndStrain(t *testing.T) {
 				}
 				return list
 			}(),
-			anchorDate:   anchor,
-			wantMonotony: 10.0,
+			anchorDate:    anchor,
+			wantMonotony:  10.0,
 			wantHasStrain: true,
-			wantStrain:   Ptr(3500.0),
+			wantStrain:    Ptr(3500.0),
 		},
 		{
 			name: "Вариативная неделя с днями отдыха (чередование нагрузки)",
@@ -148,10 +148,10 @@ func TestCalcMonotonyAndStrain(t *testing.T) {
 				{Date: anchor.AddDate(0, 0, -3), TrainingLoad: Ptr(80.0)},
 				{Date: anchor.AddDate(0, 0, -5), TrainingLoad: Ptr(100.0)},
 			},
-			anchorDate:   anchor,
-			wantMonotony: 0.85,
+			anchorDate:    anchor,
+			wantMonotony:  0.85,
 			wantHasStrain: true,
-			wantStrain:   nil, // проверяется в тесте через InDelta
+			wantStrain:    nil,
 		},
 	}
 

@@ -17,6 +17,7 @@ import (
 	"SmartRun/internal/worker"
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -31,13 +32,22 @@ import (
 func main() {
 	log := logger.NewLogger()
 	ctx := logger.WithContext(context.Background(), log) // создаём базовый контекст с логгером
+	err := run(ctx, log)
+	if err != nil {
+		log.Error("failed to start app", "error", err)
+		os.Exit(1)
+	}
+}
+
+func run(ctx context.Context, log *slog.Logger) error {
 	conn_string := os.Getenv("CONN_STRING")
 	pool, err := db.NewPool(ctx, conn_string)
 	if err != nil {
 		log.Error("failed to create database pool", "error", err,
 			"stack", string(debug.Stack()))
-		os.Exit(1)
+		return err
 	}
+	defer pool.Close()
 	validator := validator.New()
 	cacheStore := cache.NewNoopCache()
 	if redisURL := os.Getenv("REDIS_URL"); redisURL != "" {
@@ -67,6 +77,7 @@ func main() {
 	if err != nil {
 		log.Error("failed to create email service", "error", err,
 			"stack", string(debug.Stack()))
+		return err
 	}
 
 	rabbitURL := os.Getenv("RABBITMQ_URL")
@@ -76,7 +87,7 @@ func main() {
 	publisher, err := rabbitmq.NewRabbitMQPublisher(rabbitURL)
 	if err != nil {
 		log.Error("failed to initialize rabbitmq publisher", "error", err, "stack", string(debug.Stack()))
-		os.Exit(1)
+		return err
 	}
 	defer publisher.Close()
 
@@ -95,18 +106,20 @@ func main() {
 	workerPool, err := worker.NewWorkerPool(rabbitURL)
 	if err != nil {
 		log.Error("failed to initialize worker pool", "error", err, "stack", string(debug.Stack()))
-		os.Exit(1)
+		return err
 	}
 	defer workerPool.Close()
 
 	metricsWorker := worker.NewMetricsWorker(workoutService)
 	if err := workerPool.StartConsumer(rabbitmq.MetricsQueue, metricsWorker); err != nil {
 		log.Error("failed to start metrics worker", "error", err)
+		return err
 	}
 
 	emailWorker := worker.NewEmailWorker(emailService)
 	if err := workerPool.StartConsumer(rabbitmq.PasswordResetQueue, emailWorker); err != nil {
 		log.Error("failed to start email worker", "error", err)
+		return err
 	}
 
 	aiCoach, err := llm.NewGeminiCoach(context.Background())
@@ -127,6 +140,7 @@ func main() {
 	if err != nil {
 		log.Error("cannot create scheduler: %v", "error", err,
 			"stack", string(debug.Stack()))
+		return err
 	}
 	s.NewJob(
 		gocron.DailyJob(1, gocron.NewAtTimes(gocron.NewAtTime(3, 0, 0))), // Каждый день в 3:00
@@ -139,6 +153,15 @@ func main() {
 		}),
 	)
 	s.Start()
+
+	defer func() {
+		if err := s.Shutdown(); err != nil {
+			log.Error("scheduler shutdown error", "error", err,
+				"stack", string(debug.Stack()))
+		} else {
+			log.Info("scheduler shut down successfully")
+		}
+	}()
 
 	// Создаём HTTP сервер
 	handler := server.NewServer(userHandler,
@@ -156,6 +179,7 @@ func main() {
 		IdleTimeout:  60 * time.Second,
 	}
 
+	serverErrors := make(chan error, 1)
 	// Запускаем сервер в горутине
 	go func() {
 		msg := fmt.Sprintf("starting server on %s", httpServer.Addr)
@@ -163,14 +187,20 @@ func main() {
 		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Error("server listen error: %v", "error", err,
 				"stack", string(debug.Stack()))
+			serverErrors <- err
 		}
 	}()
 
 	// Ждём сигнала завершения (Ctrl+C или SIGTERM)
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-	sig := <-quit
-	log.Info("received shutdown signal", "signal", sig)
+	select {
+	case err := <-serverErrors:
+		log.Error("fail to start server: %v", "error", err)
+		return err
+	case sig := <-quit:
+		log.Info("received shutdown signal", "signal", sig)
+	}
 
 	// Graceful shutdown с таймаутом 30 сек
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -179,16 +209,11 @@ func main() {
 	if err := httpServer.Shutdown(shutdownCtx); err != nil {
 		log.Error("HTTP server shutdown error", "error", err,
 			"stack", string(debug.Stack()))
+		return err
 	} else {
 		log.Info("HTTP server shutdown successfully")
 	}
 
-	if err := s.Shutdown(); err != nil {
-		log.Error("scheduler shutdown error", "error", err,
-			"stack", string(debug.Stack()))
-	} else {
-		log.Info("scheduler shut down successfully")
-	}
-
 	log.Info("application stopped")
+	return nil
 }

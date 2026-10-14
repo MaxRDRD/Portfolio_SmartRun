@@ -113,11 +113,11 @@ func (r *DailyMetricRepo) Update(ctx context.Context, dailyMetric model.DailyMet
 	return &dailyMetric, nil
 }
 
-func (r *DailyMetricRepo) Delete(ctx context.Context, id int) error {
+func (r *DailyMetricRepo) Delete(ctx context.Context, id, userID int64) error {
 	log := logger.FromContext(ctx)
-	sql := `DELETE FROM daily_metrics WHERE id = $1`
+	sql := `DELETE FROM daily_metrics WHERE id = $1 and user_id = $2`
 	db := r.getDB(ctx)
-	tag, err := db.Exec(ctx, sql, id)
+	tag, err := db.Exec(ctx, sql, id, userID)
 	if err != nil {
 		log.Error("daily metrics repo: delete failed", "id", id, "error", err)
 		return my_errors.ErrDailyMetricNotFound
@@ -129,17 +129,17 @@ func (r *DailyMetricRepo) Delete(ctx context.Context, id int) error {
 	return nil
 }
 
-func (r *DailyMetricRepo) GetByID(ctx context.Context, id int) (*model.DailyMetric, error) {
+func (r *DailyMetricRepo) GetByID(ctx context.Context, id, userID int64) (*model.DailyMetric, error) {
 	log := logger.FromContext(ctx)
 	sql := `
 	SELECT id, user_id, date, steps, ctl, atl, tsb, fatigue_score, readiness_score,
 	body_battery_avg, total_calories, sleep_score, sleep_hours, stress_avg, recommendation, updated_at, streak_days, monotony, strain
 	FROM daily_metrics
-	WHERE id = $1
+	WHERE id = $1 and user_id = $2
 	`
 	db := r.getDB(ctx)
 	var dailyMetric model.DailyMetric
-	err := db.QueryRow(ctx, sql, id).Scan(
+	err := db.QueryRow(ctx, sql, id, userID).Scan(
 		&dailyMetric.ID,
 		&dailyMetric.UserID,
 		&dailyMetric.Date,
