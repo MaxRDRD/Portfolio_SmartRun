@@ -67,7 +67,7 @@ func (r *passwordResetRepo) MarkAsUsed(ctx context.Context, tokenHash string) er
 		return fmt.Errorf("MarkAsUsed: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
-		return my_errors.ErrPasswordResetHashNotFount
+		return my_errors.ErrPasswordResetHashNotFound
 	}
 	return nil
 }
@@ -127,7 +127,7 @@ func (r *passwordResetRepo) DeleteResetToken(ctx context.Context, tokenHash stri
 		return fmt.Errorf("DeleteResetToken: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
-		return my_errors.ErrPasswordResetHashNotFount
+		return my_errors.ErrPasswordResetHashNotFound
 	}
 	return nil
 

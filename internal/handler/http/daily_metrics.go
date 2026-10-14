@@ -6,9 +6,8 @@ import (
 	"SmartRun/internal/logger"
 	"SmartRun/internal/model"
 	"SmartRun/internal/usecase/service"
-	"SmartRun/pkg/my_errors"
+	"SmartRun/pkg/response"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -77,14 +76,14 @@ func (h *DailyMetricHandler) CreateDailyMetric(w http.ResponseWriter, r *http.Re
 	userID, ok := auth.GetUserID(r.Context())
 	if !ok {
 		log.Warn("daily-metrics/create: unauthorized")
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		response.SendUnauthorized(w, "unauthorized")
 		return
 	}
 
 	var req dto.CreateDailyMetricRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		log.Warn("daily-metrics/create: invalid body", "error", err)
-		http.Error(w, "bad request", http.StatusBadRequest)
+		response.SendBadRequest(w, "invalid request body")
 		return
 	}
 
@@ -93,7 +92,7 @@ func (h *DailyMetricHandler) CreateDailyMetric(w http.ResponseWriter, r *http.Re
 		parsedDate, err := parseDateYMD(req.Date)
 		if err != nil {
 			log.Warn("daily-metrics/create: invalid date", "value", req.Date, "error", err)
-			http.Error(w, "invalid date format, expected YYYY-MM-DD", http.StatusBadRequest)
+			response.SendBadRequest(w, "invalid date format, expected YYYY-MM-DD")
 			return
 		}
 		metricDate = parsedDate
@@ -110,22 +109,11 @@ func (h *DailyMetricHandler) CreateDailyMetric(w http.ResponseWriter, r *http.Re
 
 	createdMetric, err := h.service.CreateDailyMetric(r.Context(), dailyMetric)
 	if err != nil {
-		if errors.Is(err, my_errors.ErrDailyMetricAlreadyExists) {
-			log.Warn("daily-metrics/create: already exists", "user_id", userID, "date", req.Date)
-			http.Error(w, err.Error(), http.StatusConflict)
-			return
-		}
-		log.Error("daily-metrics/create: service failed", "error", err, "user_id", userID)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		response.SendError(w, r, err)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	if err := json.NewEncoder(w).Encode(toDailyMetricResponse(createdMetric)); err != nil {
-		http.Error(w, "internal server error", http.StatusInternalServerError)
-		return
-	}
+	response.SendJSON(w, http.StatusCreated, toDailyMetricResponse(createdMetric))
 }
 
 // GetDailyMetrics возвращает все ежедневные метрики пользователя
@@ -134,19 +122,13 @@ func (h *DailyMetricHandler) GetDailyMetrics(w http.ResponseWriter, r *http.Requ
 	userID, ok := auth.GetUserID(r.Context())
 	if !ok {
 		log.Warn("daily-metrics/get-all: unauthorized")
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		response.SendUnauthorized(w, "unauthorized")
 		return
 	}
 
 	metrics, err := h.service.GetAllDailyMetrics(r.Context(), userID)
 	if err != nil {
-		if errors.Is(err, my_errors.ErrDailyMetricNotFound) {
-			log.Warn("daily-metrics/get-all: not found", "user_id", userID)
-			http.Error(w, err.Error(), http.StatusNotFound)
-			return
-		}
-		log.Error("daily-metrics/get-all: service failed", "error", err, "user_id", userID)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		response.SendError(w, r, err)
 		return
 	}
 
@@ -156,11 +138,7 @@ func (h *DailyMetricHandler) GetDailyMetrics(w http.ResponseWriter, r *http.Requ
 		resp = append(resp, toDailyMetricResponse(&m))
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(resp); err != nil {
-		http.Error(w, "internal server error", http.StatusInternalServerError)
-		return
-	}
+	response.SendJSON(w, http.StatusOK, resp)
 }
 
 // GetDailyMetricByID возвращает ежедневную метрику по ее ID
@@ -175,34 +153,24 @@ func (h *DailyMetricHandler) GetDailyMetricByID(w http.ResponseWriter, r *http.R
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
 		log.Warn("daily-metrics/get-by-id: invalid id", "value", idStr, "error", err)
-		http.Error(w, "bad request", http.StatusBadRequest)
+		response.SendBadRequest(w, "invalid id")
 		return
 	}
 
 	userID, ok := auth.GetUserID(r.Context())
 	if !ok {
 		log.Warn("daily-metrics/get-by-id: unauthorized")
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		response.SendUnauthorized(w, "unauthorized")
 		return
 	}
 
 	metric, err := h.service.GetDailyMetricByID(r.Context(), id, userID)
 	if err != nil {
-		if errors.Is(err, my_errors.ErrDailyMetricNotFound) {
-			log.Warn("daily-metrics/get-by-id: not found", "id", id)
-			http.Error(w, err.Error(), http.StatusNotFound)
-			return
-		}
-		log.Error("daily-metrics/get-by-id: service failed", "id", id, "error", err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		response.SendError(w, r, err)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(toDailyMetricResponse(metric)); err != nil {
-		http.Error(w, "internal server error", http.StatusInternalServerError)
-		return
-	}
+	response.SendJSON(w, http.StatusOK, toDailyMetricResponse(metric))
 }
 
 // UpdateDailyMetric обновляет существующую ежедневную метрику
@@ -211,7 +179,7 @@ func (h *DailyMetricHandler) UpdateDailyMetric(w http.ResponseWriter, r *http.Re
 	userID, ok := auth.GetUserID(r.Context())
 	if !ok {
 		log.Warn("daily-metrics/update: unauthorized")
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		response.SendUnauthorized(w, "unauthorized")
 		return
 	}
 
@@ -219,7 +187,7 @@ func (h *DailyMetricHandler) UpdateDailyMetric(w http.ResponseWriter, r *http.Re
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		log.Warn("daily-metrics/update: invalid body", "error", err)
-		http.Error(w, "bad request", http.StatusBadRequest)
+		response.SendBadRequest(w, "invalid request body")
 		return
 	}
 
@@ -227,20 +195,11 @@ func (h *DailyMetricHandler) UpdateDailyMetric(w http.ResponseWriter, r *http.Re
 
 	updatedMetric, err := h.service.UpdateDailyMetric(r.Context(), req)
 	if err != nil {
-		if errors.Is(err, my_errors.ErrDailyMetricNotFound) {
-			log.Warn("daily-metrics/update: not found", "id", req.ID)
-			http.Error(w, err.Error(), http.StatusNotFound)
-			return
-		}
-		log.Error("daily-metrics/update: service failed", "id", req.ID, "error", err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		response.SendError(w, r, err)
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(toDailyMetricResponse(updatedMetric)); err != nil {
-		http.Error(w, "internal server error", http.StatusInternalServerError)
-		return
-	}
+
+	response.SendJSON(w, http.StatusOK, toDailyMetricResponse(updatedMetric))
 }
 
 // DeleteDailyMetric удаляет ежедневную метрику по ее ID
@@ -254,26 +213,20 @@ func (h *DailyMetricHandler) DeleteDailyMetric(w http.ResponseWriter, r *http.Re
 	id, err := strconv.ParseInt(idStr, 10, 64)
 	if err != nil {
 		log.Warn("daily-metrics/delete: invalid id", "value", idStr, "error", err)
-		http.Error(w, "bad request", http.StatusBadRequest)
+		response.SendBadRequest(w, "invalid id")
 		return
 	}
 
 	userID, ok := auth.GetUserID(r.Context())
 	if !ok {
 		log.Warn("daily-metrics/delete: unauthorized")
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		response.SendUnauthorized(w, "unauthorized")
 		return
 	}
 
 	err = h.service.DeleteDailyMetric(r.Context(), id, userID)
 	if err != nil {
-		if errors.Is(err, my_errors.ErrDailyMetricNotFound) {
-			log.Warn("daily-metrics/delete: not found", "id", id)
-			http.Error(w, err.Error(), http.StatusNotFound)
-			return
-		}
-		log.Error("daily-metrics/delete: service failed", "id", id, "error", err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		response.SendError(w, r, err)
 		return
 	}
 
@@ -286,7 +239,7 @@ func (h *DailyMetricHandler) GenerateAdvice(w http.ResponseWriter, r *http.Reque
 	userID, ok := auth.GetUserID(r.Context())
 	if !ok {
 		log.Warn("daily-metrics/generate-advice: unauthorized")
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		response.SendUnauthorized(w, "unauthorized")
 		return
 	}
 
@@ -296,20 +249,19 @@ func (h *DailyMetricHandler) GenerateAdvice(w http.ResponseWriter, r *http.Reque
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		log.Warn("daily-metrics/generate-advice: invalid body", "error", err)
-		http.Error(w, "bad request", http.StatusBadRequest)
+		response.SendBadRequest(w, "invalid request body")
 		return
 	}
 
 	date, err := parseDateYMD(req.Date)
 	if err != nil {
 		log.Warn("daily-metrics/generate-advice: invalid date", "error", err)
-		http.Error(w, "invalid date", http.StatusBadRequest)
+		response.SendBadRequest(w, "invalid date format, expected YYYY-MM-DD")
 		return
 	}
 
 	if err := h.service.TriggerAdviceGeneration(r.Context(), userID, date); err != nil {
-		log.Error("daily-metrics/generate-advice: failed to trigger", "error", err)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		response.SendError(w, r, err)
 		return
 	}
 

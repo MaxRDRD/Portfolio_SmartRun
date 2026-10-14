@@ -2,6 +2,8 @@ package my_middleware
 
 import (
 	"SmartRun/internal/auth"
+	"SmartRun/internal/logger"
+	"SmartRun/pkg/response"
 	"context"
 	"fmt"
 	"net/http"
@@ -23,12 +25,12 @@ func (m *AuthMiddleware) JWT(next http.Handler) http.Handler {
 
 		tokenString := r.Header.Get("Authorization")
 		if tokenString == "" {
-			http.Error(w, "missing authorization header", http.StatusUnauthorized)
+			response.SendUnauthorized(w, "missing authorization header")
 			return
 		}
 
 		if !strings.HasPrefix(tokenString, "Bearer ") {
-			http.Error(w, "missing Bearer", http.StatusUnauthorized)
+			response.SendUnauthorized(w, "invalid authorization header")
 			return
 		}
 		tokenString = strings.TrimPrefix(tokenString, "Bearer ")
@@ -46,13 +48,13 @@ func (m *AuthMiddleware) JWT(next http.Handler) http.Handler {
 			})
 
 		if err != nil || !token.Valid {
-			http.Error(w, "invalid token", http.StatusUnauthorized)
+			response.SendUnauthorized(w, "invalid token")
 			return
 		}
 
-		ctx := context.WithValue(r.Context(), auth.UserIDKey, claims.UserID)
-
+		reqLogger := logger.FromContext(r.Context()).With("user_id", claims.UserID)
+		ctx := logger.WithContext(r.Context(), reqLogger)
+		ctx = context.WithValue(ctx, auth.UserIDKey, claims.UserID)
 		next.ServeHTTP(w, r.WithContext(ctx))
-
 	})
 }

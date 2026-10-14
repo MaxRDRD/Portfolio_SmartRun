@@ -6,6 +6,7 @@ import (
 	"SmartRun/internal/logger"
 	"SmartRun/internal/usecase/service"
 	"SmartRun/pkg/my_errors"
+	"SmartRun/pkg/response"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -31,19 +32,13 @@ func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		log.Warn("register: invalid body", "error", err)
-		http.Error(w, "invalid body", http.StatusBadRequest)
+		response.SendBadRequest(w, "invalid request body")
 		return
 	}
 
 	res, err := h.service.Register(r.Context(), req)
 	if err != nil {
-		if errors.Is(err, my_errors.ErrUserAlreadyExists) {
-			log.Warn("register: user already exists", "email", req.Email)
-			http.Error(w, err.Error(), http.StatusConflict)
-			return
-		}
-		log.Error("register: service failed", "error", err, "email", req.Email)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		response.SendError(w, r, err)
 		return
 	}
 
@@ -60,15 +55,12 @@ func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
 		// Domain:   "example.com",           // если нужно
 	})
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-
 	type registerResponse struct {
 		User dto.UserResponse `json:"user"`
 		Auth dto.AuthResponse `json:"auth"`
 	}
 
-	_ = json.NewEncoder(w).Encode(registerResponse{
+	response.SendJSON(w, http.StatusCreated, registerResponse{
 		User: *res.User,
 		Auth: dto.AuthResponse{
 			AccessToken: res.AccessToken,
@@ -88,27 +80,20 @@ func (h *UserHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		log.Warn("login: invalid request", "error", err)
-		http.Error(w, "invalid request", http.StatusBadRequest)
+		response.SendBadRequest(w, "invalid request body")
 		return
 	}
 
 	res, err := h.service.Login(r.Context(), req)
 	if err != nil {
-		if errors.Is(err, my_errors.ErrInvalidCredentials) {
-			log.Warn("login: invalid credentials", "email", req.Email)
-			http.Error(w, "invalid credentials", http.StatusUnauthorized)
-			return
-		}
-		log.Error("login: internal error", "error", err, "email", req.Email)
-		http.Error(w, "server error", http.StatusInternalServerError)
+		response.SendError(w, r, err)
 		return
 	}
 
 	// проверка 2FA статуса
 	totpEnabled, err := h.service.IsTOTPEnabled(r.Context(), res.User.ID)
 	if err != nil {
-		log.Error("login: failed to check 2fa status", "error", err, "user_id", res.User.ID)
-		http.Error(w, "server error", http.StatusInternalServerError)
+		response.SendError(w, r, err)
 		return
 	}
 
@@ -127,9 +112,7 @@ func (h *UserHandler) Login(w http.ResponseWriter, r *http.Request) {
 	// Если TOTP включена: НЕ выдаём access token, требуем проверку 2FA
 	if totpEnabled {
 		log.Info("login: 2fa required", "user_id", res.User.ID)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusAccepted) // 202 Accepted - требуется дополнительное действие
-		_ = json.NewEncoder(w).Encode(dto.AuthResponse{
+		response.SendJSON(w, http.StatusAccepted, dto.AuthResponse{
 			AccessToken: "", // пусто!
 			ExpiresIn:   0,  // пусто!
 			Require2FA:  true,
@@ -139,9 +122,8 @@ func (h *UserHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// TOTP отключена - выдаём полный access token
-	w.Header().Set("Content-Type", "application/json")
 	log.Info("login: success", "user_id", res.User.ID)
-	_ = json.NewEncoder(w).Encode(dto.AuthResponse{
+	response.SendJSON(w, http.StatusOK, dto.AuthResponse{
 		AccessToken: res.AccessToken,
 		ExpiresIn:   res.ExpiresIn,
 		Message:     "ok",
@@ -155,26 +137,24 @@ func (h *UserHandler) Me(w http.ResponseWriter, r *http.Request) {
 	userID, ok := auth.GetUserID(r.Context())
 	if !ok {
 		log.Warn("me: unauthorized")
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		response.SendUnauthorized(w, "unauthorized")
 		return
 	}
 
 	userResp, err := h.service.GetUserByID(r.Context(), userID)
 	if err != nil {
-		log.Warn("me: user not found", "user_id", userID, "error", err)
-		http.Error(w, "user not found", http.StatusNotFound)
+		response.SendError(w, r, err)
 		return
 	}
 
 	// проверка 2FA статуса
 	totpEnabled, err := h.service.IsTOTPEnabled(r.Context(), userID)
 	if err != nil {
-		log.Error("me: failed to check 2fa status", "user_id", userID, "error", err)
-		http.Error(w, "server error", http.StatusInternalServerError)
+		response.SendError(w, r, err)
 		return
 	}
 
-	_ = json.NewEncoder(w).Encode(dto.UserResponse{
+	response.SendJSON(w, http.StatusOK, dto.UserResponse{
 		ID:            userResp.ID,
 		Email:         userResp.Email,
 		Name:          userResp.Name,
@@ -197,38 +177,30 @@ func (h *UserHandler) UpdateMe(w http.ResponseWriter, r *http.Request) {
 	userID, ok := auth.GetUserID(ctx)
 	if !ok {
 		log.Warn("update-me: unauthorized")
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		response.SendUnauthorized(w, "unauthorized")
 		return
 	}
 
 	var req dto.UpdateUserRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		log.Warn("update-me: invalid body", "error", err, "user_id", userID)
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+		response.SendBadRequest(w, "invalid request body")
 		return
 	}
 
 	updated, err := h.service.UpdateUser(ctx, userID, req)
 	if err != nil {
-		if errors.Is(err, my_errors.ErrUserAlreadyExists) {
-			log.Warn("update-me: email already exists", "user_id", userID)
-			http.Error(w, err.Error(), http.StatusConflict)
-			return
-		}
-		log.Error("update-me: service failed", "error", err, "user_id", userID)
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		response.SendError(w, r, err)
 		return
 	}
 
 	totpEnabled, err := h.service.IsTOTPEnabled(ctx, userID)
 	if err != nil {
-		log.Error("update-me: failed to check 2fa status", "user_id", userID, "error", err)
-		http.Error(w, "server error", http.StatusInternalServerError)
+		response.SendError(w, r, err)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(dto.UserResponse{
+	response.SendJSON(w, http.StatusOK, dto.UserResponse{
 		ID:            updated.ID,
 		Email:         updated.Email,
 		Name:          updated.Name,
@@ -251,7 +223,7 @@ func (h *UserHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	cookie, err := r.Cookie("refresh_token")
 	if err != nil {
 		log.Warn("refresh: cookie not found", "error", err)
-		http.Error(w, "refresh token not found", http.StatusUnauthorized)
+		response.SendUnauthorized(w, "refresh token not found")
 		return
 	}
 
@@ -262,7 +234,7 @@ func (h *UserHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 		// Важно: при любой ошибке (протух, отозван, подделан) → удаляем cookie
 		log.Warn("refresh: invalid refresh token", "error", err)
 		h.deleteRefreshCookie(ctx, w)
-		http.Error(w, "invalid refresh token", http.StatusUnauthorized)
+		response.SendUnauthorized(w, "invalid refresh token")
 		return
 	}
 
@@ -277,9 +249,8 @@ func (h *UserHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 		SameSite: http.SameSiteStrictMode,
 	})
 
-	w.Header().Set("Content-Type", "application/json")
 	log.Info("refresh: success")
-	_ = json.NewEncoder(w).Encode(dto.AuthResponse{
+	response.SendJSON(w, http.StatusOK, dto.AuthResponse{
 		AccessToken: res.AccessToken,
 		ExpiresIn:   res.ExpiresIn,
 		Message:     "ok",
@@ -317,8 +288,7 @@ func (h *UserHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	h.deleteRefreshCookie(ctx, w)
 	log.Info("logout: success")
 
-	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(map[string]string{
+	response.SendJSON(w, http.StatusOK, map[string]string{
 		"message": "logged out successfully",
 	})
 }
@@ -330,21 +300,19 @@ func (h *UserHandler) Enable2FA(w http.ResponseWriter, r *http.Request) {
 	userID, ok := auth.GetUserID(ctx)
 	if !ok {
 		log.Warn("enable2fa: unauthorized")
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		response.SendUnauthorized(w, "unauthorized")
 		return
 	}
 
 	email, err := h.service.GetEmailByID(ctx, userID)
 	if err != nil {
-		log.Error("enable2fa: failed to resolve email", "user_id", userID, "error", err)
-		http.Error(w, "email not found in context", http.StatusInternalServerError)
+		response.SendError(w, r, err)
 		return
 	}
 
 	secret, qrBytes, err := h.service.EnableTOTP(ctx, userID, email)
 	if err != nil {
-		log.Error("enable2fa: failed to enable", "user_id", userID, "error", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		response.SendError(w, r, err)
 		return
 	}
 	log.Info("enable2fa: success", "user_id", userID)
@@ -354,9 +322,7 @@ func (h *UserHandler) Enable2FA(w http.ResponseWriter, r *http.Request) {
 		Secret:   secret, // ← только здесь отдаём, потом уже никогда
 	}
 
-	// Возвращаем QR как PNG-картинку
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(resp)
+	response.SendJSON(w, http.StatusOK, resp)
 }
 
 func (h *UserHandler) Verify2FA(w http.ResponseWriter, r *http.Request) {
@@ -367,16 +333,16 @@ func (h *UserHandler) Verify2FA(w http.ResponseWriter, r *http.Request) {
 	cookie, err := r.Cookie("refresh_token")
 	if err != nil || cookie.Value == "" {
 		log.Warn("verify2fa: refresh cookie required", "error", err)
-		http.Error(w, "refresh_token cookie required", http.StatusUnauthorized)
+		response.SendUnauthorized(w, "refresh_token cookie required")
 		return
 	}
 
 	// Валидируем refresh token и получаем userID из сессии
 	refreshHash := auth.HashToken(cookie.Value)
-	session, err := h.service.GetSessionByHash(ctx, refreshHash) // нужно добавить этот метод
+	session, err := h.service.GetSessionByHash(ctx, refreshHash)
 	if err != nil {
 		log.Info("invalid or expired session")
-		http.Error(w, "invalid or expired session", http.StatusUnauthorized)
+		response.SendUnauthorized(w, "invalid or expired session")
 		return
 	}
 	userID := session.UserId
@@ -386,26 +352,25 @@ func (h *UserHandler) Verify2FA(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		log.Warn("verify2fa: invalid json", "error", err)
-		http.Error(w, "invalid json", http.StatusBadRequest)
+		response.SendBadRequest(w, "invalid json")
 		return
 	}
 
 	if req.Code == "" {
 		log.Warn("verify2fa: empty code", "user_id", userID)
-		http.Error(w, "code required", http.StatusBadRequest)
+		response.SendBadRequest(w, "code required")
 		return
 	}
 
 	// Проверяем TOTP code
 	valid, err := h.service.VerifyTOTP(ctx, userID, req.Code)
 	if err != nil {
-		log.Error("verify2fa: totp verification failed", "user_id", userID, "error", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		response.SendError(w, r, err)
 		return
 	}
 	if !valid {
 		log.Warn("verify2fa: invalid code", "user_id", userID)
-		http.Error(w, "invalid 2fa code", http.StatusUnauthorized)
+		response.SendUnauthorized(w, "invalid 2fa code")
 		return
 	}
 
@@ -414,8 +379,7 @@ func (h *UserHandler) Verify2FA(w http.ResponseWriter, r *http.Request) {
 
 	res, err = h.service.IssueTokensAfter2FA(ctx, userID)
 	if err != nil {
-		log.Error("verify2fa: issue tokens failed", "user_id", userID, "error", err)
-		http.Error(w, "failed to issue tokens", http.StatusInternalServerError)
+		response.SendError(w, r, err)
 		return
 	}
 	log.Info("verify2fa: success", "user_id", userID)
@@ -431,8 +395,7 @@ func (h *UserHandler) Verify2FA(w http.ResponseWriter, r *http.Request) {
 		SameSite: http.SameSiteStrictMode,
 	})
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(dto.AuthResponse{
+	response.SendJSON(w, http.StatusOK, dto.AuthResponse{
 		AccessToken: res.AccessToken,
 		ExpiresIn:   res.ExpiresIn,
 		Message:     "2FA verified",
@@ -449,26 +412,24 @@ func (h *UserHandler) RequestPasswordReset(w http.ResponseWriter, r *http.Reques
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		log.Warn("password-reset/request: invalid json", "error", err)
-		http.Error(w, "invalid json", http.StatusBadRequest)
+		response.SendBadRequest(w, "invalid json")
 		return
 	}
 	if req.Email == "" {
 		log.Warn("password-reset/request: empty email")
-		http.Error(w, "email required", http.StatusBadRequest)
+		response.SendBadRequest(w, "email required")
 		return
 	}
 
 	err := h.service.RequestPasswordReset(r.Context(), req.Email)
 	// Важно: не выдаём факт существования email.
 	if err != nil && !errors.Is(err, my_errors.ErrUserNotFound) {
-		log.Error("password-reset/request: failed", "email", req.Email, "error", err)
-		http.Error(w, "failed to send reset email", http.StatusInternalServerError)
+		response.SendError(w, r, err)
 		return
 	}
 	log.Info("password-reset/request: accepted", "email", req.Email)
 
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]string{"message": "if email exists, reset link sent"})
+	response.SendJSON(w, http.StatusOK, map[string]string{"message": "if email exists, reset link sent"})
 }
 
 // POST /api/password/reset/confirm
@@ -482,35 +443,33 @@ func (h *UserHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		log.Warn("password-reset/confirm: invalid json", "error", err)
-		http.Error(w, "invalid json", http.StatusBadRequest)
+		response.SendBadRequest(w, "invalid json")
 		return
 	}
 	if req.Token == "" || req.NewPassword == "" {
 		log.Warn("password-reset/confirm: missing fields")
-		http.Error(w, "token and new_password required", http.StatusBadRequest)
+		response.SendBadRequest(w, "token and new_password required")
 		return
 	}
 	if len(req.NewPassword) < 8 {
 		log.Warn("password-reset/confirm: weak password")
-		http.Error(w, "new_password must be at least 8 characters", http.StatusBadRequest)
+		response.SendBadRequest(w, "new_password must be at least 8 characters")
 		return
 	}
 
 	userID, err := h.service.ValidateResetToken(r.Context(), req.Token)
 	if err != nil {
 		log.Warn("password-reset/confirm: invalid token", "error", err)
-		http.Error(w, "invalid or expired token", http.StatusBadRequest)
+		response.SendBadRequest(w, "invalid or expired token")
 		return
 	}
 
 	err = h.service.PerformPasswordReset(r.Context(), userID, req.NewPassword, req.Token)
 	if err != nil {
-		log.Error("password-reset/confirm: failed", "user_id", userID, "error", err)
-		http.Error(w, "failed to reset password", http.StatusInternalServerError)
+		response.SendError(w, r, err)
 		return
 	}
 	log.Info("password-reset/confirm: success", "user_id", userID)
 
-	w.Header().Set("Content-Type", "application/json")
-	_ = json.NewEncoder(w).Encode(map[string]string{"message": "password reset successful"})
+	response.SendJSON(w, http.StatusOK, map[string]string{"message": "password reset successful"})
 }
