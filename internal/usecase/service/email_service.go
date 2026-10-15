@@ -51,7 +51,6 @@ func NewEmailService(cfg config.EmailConfig) (EmailService, error) {
 	}
 
 	// Опциональная проверка: пробуем установить соединение один раз
-	// (если не нужно — просто удали этот блок)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := client.DialWithContext(ctx); err != nil {

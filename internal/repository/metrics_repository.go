@@ -6,6 +6,7 @@ import (
 	"context"
 )
 
+//go:generate mockery --name=MetricsRepository --dir=. --output=../usecase/service/mocks --outpkg=mocks --filename=mock_metrics_repository.go
 type MetricsRepository interface {
 	CreateMetrics(ctx context.Context, metrics model.Metrics) (*model.Metrics, error)
 	UpdateMetrics(ctx context.Context, metrics model.Metrics) (*model.Metrics, error)

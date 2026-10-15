@@ -8,7 +8,6 @@ import (
 	appLogger "SmartRun/internal/logger"
 	"SmartRun/internal/model"
 	"SmartRun/internal/repository"
-	"SmartRun/internal/repository_impl/postgres"
 	"SmartRun/pkg/my_errors"
 	"context"
 	"errors"
@@ -494,28 +493,25 @@ func (s *authService) IsTOTPEnabled(ctx context.Context, userID int64) (bool, er
 }
 
 func (s *authService) IssueTokensAfter2FA(ctx context.Context, userID int64) (*dto.AuthResult, error) {
-
-	tx, err := s.txManager.Begin(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("begin tx: %w", err)
-	}
-	defer tx.Rollback(ctx) // Автоматический откат, если не commit
-
 	refreshToken, session, err := s.createSession(userID)
 	if err != nil {
 		return nil, fmt.Errorf("IssueTokensAfter2FA: %w", err)
 	}
 
-	sessionRepoTx := postgres.NewSessionRepository(tx)
-	err = sessionRepoTx.CreateSession(ctx, session)
+	err = s.txManager.WithTransaction(ctx, func(ctx context.Context) error {
+		if err := s.sessionRepo.CreateSession(ctx, session); err != nil {
+			return fmt.Errorf("IssueTokensAfter2FA: %w", err)
+		}
+		return nil
+	})
 	if err != nil {
-		return nil, fmt.Errorf("IssueTokensAfter2FA: %w", err)
-	}
-	if err := tx.Commit(ctx); err != nil {
-		return nil, fmt.Errorf("IssueTokensAfter2FA: %w", err)
+		return nil, err
 	}
 
 	accessToken, err := auth.GenerateAccessToken(userID, s.cfg.AccessTokenTTL)
+	if err != nil {
+		return nil, fmt.Errorf("IssueTokensAfter2FA: %w", err)
+	}
 	expiresIn := int(s.cfg.AccessTokenTTL.Seconds()) // 900
 
 	res := &dto.AuthResult{
