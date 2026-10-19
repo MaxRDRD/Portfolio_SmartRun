@@ -46,7 +46,7 @@ func (r *totpRepository) GetTOTPSecret(ctx context.Context, userID int64) (strin
 		return "", fmt.Errorf("failed to decrypt TOTP secret: %w", err)
 	}
 
-	return plaintextSecret, fmt.Errorf("GetTOTPSecret: %w", err)
+	return plaintextSecret, nil
 }
 
 func (r *totpRepository) UpdateTOTPSecret(ctx context.Context, userID int64, secret string, enabled bool) error {
@@ -83,6 +83,9 @@ func (r *totpRepository) IsTOTPEnabled(ctx context.Context, userID int64) (bool,
 
 	var TOTPEnabled bool
 	err := db.QueryRow(ctx, query, userID).Scan(&TOTPEnabled)
+	if err != nil {
+		return false, fmt.Errorf("IsTOTPEnabled: %w", err)
+	}
 
-	return TOTPEnabled, fmt.Errorf("IsTOTPEnabled: %w", err)
+	return TOTPEnabled, nil
 }

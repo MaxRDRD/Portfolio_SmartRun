@@ -10,7 +10,6 @@ import (
 	"SmartRun/pkg/my_errors"
 	"SmartRun/pkg/response"
 	"encoding/json"
-	"errors"
 	"io"
 	"net/http"
 	"strconv"
@@ -54,20 +53,20 @@ func (h *WorkoutHandler) Create(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		workout, err = h.service.Create(r.Context(), userID, req)
-
 	} else if contentType == "" ||
 		strings.HasPrefix(contentType, "application/octet-stream") ||
 		strings.HasPrefix(contentType, "application/vnd.garmin.fit") {
 		// Загрузка FIT файла как бинарного потока
-		data, err := io.ReadAll(r.Body)
-		if len(data) == 0 {
-			log.Warn("workouts/create: empty fit file")
-			response.SendBadRequest(w, "empty file")
-			return
-		}
+		var data []byte
+		data, err = io.ReadAll(r.Body)
 		if err != nil {
 			log.Warn("workouts/create: failed to read fit file", "error", err)
 			response.SendBadRequest(w, "failed to read file")
+			return
+		}
+		if len(data) == 0 {
+			log.Warn("workouts/create: empty fit file")
+			response.SendBadRequest(w, "empty file")
 			return
 		}
 		workout, err = h.service.UploadFit(r.Context(), userID, data)
@@ -157,12 +156,7 @@ func (h *WorkoutHandler) GetAll(w http.ResponseWriter, r *http.Request) {
 
 	filter, err := buildWorkoutFilterFromQuery(r, userID)
 	if err != nil {
-		var badReqErr *queryParamError
-		if errors.As(err, &badReqErr) {
-			response.SendBadRequest(w, err.Error())
-			return
-		}
-		response.SendBadRequest(w, "invalid query params")
+		response.SendBadRequest(w, err.Error())
 		return
 	}
 

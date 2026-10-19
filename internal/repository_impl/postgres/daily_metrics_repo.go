@@ -291,10 +291,16 @@ func (r *DailyMetricRepo) UpdateOrCreate(ctx context.Context, dailyMetric *model
 		}
 
 		_, err := r.Update(ctx, *dailyMetric)
-		return fmt.Errorf("UpdateOrCreate: %w", err)
+		if err != nil {
+			return fmt.Errorf("UpdateOrCreate: %w", err)
+		}
+		return nil
 	}
 
 	// Создаём новую запись
 	_, err = r.Create(ctx, *dailyMetric)
-	return fmt.Errorf("UpdateOrCreate: %w", err)
+	if err != nil {
+		return fmt.Errorf("UpdateOrCreate: %w", err)
+	}
+	return nil
 }

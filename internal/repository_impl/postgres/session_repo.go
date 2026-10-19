@@ -134,7 +134,7 @@ func (r *sessionRepository) FindSessionByHash(ctx context.Context, hash string) 
 		return nil, my_errors.ErrInvalidToken
 	}
 
-	return &session, fmt.Errorf("FindSessionByHash: %w", err)
+	return &session, nil
 }
 
 func (r *sessionRepository) CleanupExpiredSessions(ctx context.Context) error {
@@ -142,12 +142,18 @@ func (r *sessionRepository) CleanupExpiredSessions(ctx context.Context) error {
 
 	query := `DELETE FROM sessions WHERE expires_at < NOW() - INTERVAL '1 day'`
 	_, err := db.Exec(ctx, query)
-	return fmt.Errorf("CleanupExpiredSessions: %w", err)
+	if err != nil {
+		return fmt.Errorf("CleanupExpiredSessions: %w", err)
+	}
+	return nil
 }
 
 func (r *sessionRepository) DeleteAllSessionsForUser(ctx context.Context, userID int64) error {
 	db := r.getDB(ctx)
 
 	_, err := db.Exec(ctx, "DELETE FROM sessions WHERE user_id = $1", userID)
-	return fmt.Errorf("DeleteAllSessionsForUser: %w", err)
+	if err != nil {
+		return fmt.Errorf("DeleteAllSessionsForUser: %w", err)
+	}
+	return nil
 }

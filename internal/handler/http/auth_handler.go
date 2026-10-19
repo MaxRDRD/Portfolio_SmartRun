@@ -242,7 +242,7 @@ func (h *UserHandler) Refresh(w http.ResponseWriter, r *http.Request) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     "refresh_token",
 		Value:    res.RefreshToken,
-		Path:     "/",
+		Path:     "/api",
 		MaxAge:   60 * 60 * 24 * 30,
 		HttpOnly: true,
 		Secure:   os.Getenv("APP_ENV") == "production",

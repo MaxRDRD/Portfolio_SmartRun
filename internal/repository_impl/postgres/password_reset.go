@@ -34,7 +34,10 @@ func (r *passwordResetRepo) CreateResetToken(ctx context.Context, userID int64, 
         VALUES ($1, $2, $3)
     `
 	_, err := db.Exec(ctx, query, userID, tokenHash, expiresAt)
-	return fmt.Errorf("CreateResetToken: %w", err)
+	if err != nil {
+		return fmt.Errorf("CreateResetToken: %w", err)
+	}
+	return nil
 }
 
 func (r *passwordResetRepo) FindResetByTokenHash(ctx context.Context, tokenHash string) (userID int64, used bool, err error) {
@@ -47,10 +50,13 @@ func (r *passwordResetRepo) FindResetByTokenHash(ctx context.Context, tokenHash 
         AND expires_at > NOW()
     `
 	err = db.QueryRow(ctx, query, tokenHash).Scan(&userID, &used)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return 0, false, my_errors.ErrTokenNotFound
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return 0, false, my_errors.ErrTokenNotFound
+		}
+		return 0, false, fmt.Errorf("FindResetByTokenHash: %w", err)
 	}
-	return userID, used, fmt.Errorf("FindResetByTokenHash: %w", err)
+	return userID, used, nil
 }
 
 func (r *passwordResetRepo) MarkAsUsed(ctx context.Context, tokenHash string) error {
@@ -138,5 +144,8 @@ func (r *passwordResetRepo) CleanupExpiredResetTokens(ctx context.Context) error
 
 	query := `DELETE FROM password_resets WHERE expires_at < NOW()`
 	_, err := db.Exec(ctx, query)
-	return fmt.Errorf("CleanupExpiredResetTokens: %w", err)
+	if err != nil {
+		return fmt.Errorf("CleanupExpiredResetTokens: %w", err)
+	}
+	return nil
 }

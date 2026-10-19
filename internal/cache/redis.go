@@ -72,14 +72,20 @@ func (c *redisCache) Set(ctx context.Context, key string, value string, ttl time
 	_, err := c.breaker.Execute(func() (any, error) {
 		return nil, c.client.Set(ctx, key, value, ttl).Err()
 	})
-	return fmt.Errorf("Set: %w", err)
+	if err != nil {
+		return fmt.Errorf("Set: %w", err)
+	}
+	return nil
 }
 
 func (c *redisCache) Del(ctx context.Context, key string) error {
 	_, err := c.breaker.Execute(func() (any, error) {
 		return nil, c.client.Del(ctx, key).Err()
 	})
-	return fmt.Errorf("Del: %w", err)
+	if err != nil {
+		return fmt.Errorf("Del: %w", err)
+	}
+	return nil
 }
 
 func (c *redisCache) Exists(ctx context.Context, keys ...string) (int64, error) {
@@ -120,5 +126,8 @@ func (c *redisCache) SetWithJitter(ctx context.Context, key string, value interf
 	_, err = c.breaker.Execute(func() (any, error) {
 		return nil, c.client.Set(ctx, key, data, ttl).Err()
 	})
-	return fmt.Errorf("SetWithJitter: %w", err)
+	if err != nil {
+		return fmt.Errorf("SetWithJitter: %w", err)
+	}
+	return nil
 }
