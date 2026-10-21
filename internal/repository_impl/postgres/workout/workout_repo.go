@@ -172,6 +172,7 @@ func (r *workoutRepository) GetAllByUserID(ctx context.Context, filter dto.Worko
 		if err != nil {
 			return nil, fmt.Errorf("scan workout: %w", err)
 		}
+		workout.UserID = filter.UserID
 		workouts = append(workouts, *workout)
 	}
 
