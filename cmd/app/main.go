@@ -11,8 +11,8 @@ import (
 	myhttp "SmartRun/internal/handler/http"
 	"SmartRun/internal/logger"
 	"SmartRun/internal/middleware"
-	repopostgres "SmartRun/internal/repository_impl/postgres"
-	workoutpostgres "SmartRun/internal/repository_impl/postgres/workout"
+	"SmartRun/internal/repository/postgres"
+	workoutpostgres "SmartRun/internal/repository/postgres/workout"
 	"SmartRun/internal/usecase/service"
 	"SmartRun/internal/worker"
 	"context"
@@ -58,10 +58,15 @@ func run(ctx context.Context, log *slog.Logger) error {
 			log.Info("redis cache initialized")
 		}
 	}
+	defer func() {
+		if err := cacheStore.Close(); err != nil {
+			log.Warn("cache close error", "error", err)
+		}
+	}()
 
-	userRepo := repopostgres.NewUserRepository(pool, cacheStore)
-	sessionRepo := repopostgres.NewSessionRepository(pool)
-	totpRepo := repopostgres.NewTOTPRepository(pool)
+	userRepo := postgres.NewUserRepository(pool, cacheStore)
+	sessionRepo := postgres.NewSessionRepository(pool)
+	totpRepo := postgres.NewTOTPRepository(pool)
 	cfg := config.AuthConfig{
 		AccessTokenTTL:  15 * time.Minute,
 		RefreshTokenTTL: 30 * 24 * time.Hour,
@@ -71,8 +76,8 @@ func run(ctx context.Context, log *slog.Logger) error {
 	if cfg.PublicURL == "" {
 		cfg.PublicURL = "http://localhost:3000"
 	}
-	txManager := repopostgres.NewTxManager(pool)
-	passwResetRepo := repopostgres.NewPasswordResetRepository(pool)
+	txManager := postgres.NewTxManager(pool)
+	passwResetRepo := postgres.NewPasswordResetRepository(pool)
 	emailService, err := service.NewEmailService(cfg.Email)
 	if err != nil {
 		log.Error("failed to create email service", "error", err,
@@ -95,7 +100,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 	userHandler := myhttp.NewUserHandler(userService)
 
 	workoutRepo := workoutpostgres.NewWorkoutRepository(pool)
-	dailyMetricsRepo := repopostgres.NewDailyMetricRepository(pool)
+	dailyMetricsRepo := postgres.NewDailyMetricRepository(pool)
 	parser := fit.NewMuktihariFitParser()
 	workoutService := service.NewWorkoutService(workoutRepo, dailyMetricsRepo, userRepo, parser, validator, txManager, publisher)
 	workoutHandler := myhttp.NewWorkoutHandler(workoutService)
@@ -132,7 +137,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 		}
 	}
 
-	metricsRepo := repopostgres.NewMetricsRepository(pool, cacheStore)
+	metricsRepo := postgres.NewMetricsRepository(pool, cacheStore)
 	metricsService := service.NewMetricsService(metricsRepo, validator)
 	metricsHandler := myhttp.NewMetricHandler(metricsService)
 
@@ -172,11 +177,12 @@ func run(ctx context.Context, log *slog.Logger) error {
 	// Оборачиваем в middleware, чтобы в каждом запросе был логгер с request_id и т.д.
 	loggedHandler := middleware.LogMiddleware(log)(handler)
 	httpServer := &http.Server{
-		Addr:         ":8080",
-		Handler:      loggedHandler,
-		ReadTimeout:  15 * time.Second,
-		WriteTimeout: 15 * time.Second,
-		IdleTimeout:  60 * time.Second,
+		Addr:              ":8080",
+		Handler:           loggedHandler,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      15 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		ReadHeaderTimeout: 3 * time.Second,
 	}
 
 	serverErrors := make(chan error, 1)

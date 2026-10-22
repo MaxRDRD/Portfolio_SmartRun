@@ -4,8 +4,8 @@ import (
 	"SmartRun/internal/dto"
 	"SmartRun/internal/model"
 	"SmartRun/internal/repository"
-	"SmartRun/internal/repository_impl/postgres"
-	"SmartRun/pkg/my_errors"
+	"SmartRun/internal/repository/postgres"
+	"SmartRun/pkg/apperrors"
 	"context"
 	"errors"
 	"fmt"
@@ -132,7 +132,7 @@ func (r *workoutRepository) GetByID(ctx context.Context, id int64, userID int64)
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, my_errors.ErrWorkoutNotFound
+			return nil, apperrors.ErrWorkoutNotFound
 		}
 		return nil, fmt.Errorf("scan workout: %w", err)
 	}
@@ -196,7 +196,7 @@ func (r *workoutRepository) DeleteWorkout(ctx context.Context, id int64, userID 
 	}
 
 	if tag.RowsAffected() == 0 {
-		return my_errors.ErrWorkoutNotFound
+		return apperrors.ErrWorkoutNotFound
 	}
 
 	return nil
@@ -254,11 +254,11 @@ func (r *workoutRepository) Update(ctx context.Context, workout *model.Workouts)
 		workout.UserID,
 	)
 	if err != nil {
-		return my_errors.ErrWorkoutUpdate
+		return apperrors.ErrWorkoutUpdate
 	}
 
 	if tag.RowsAffected() == 0 {
-		return my_errors.ErrWorkoutNotFound
+		return apperrors.ErrWorkoutNotFound
 	}
 
 	return nil
@@ -289,7 +289,7 @@ func (r *workoutRepository) GetMonthlyHistory(ctx context.Context, userID int64,
 
 	monthRows, err := db.Query(ctx, monthQuery, userID, monthsLimit, monthsOffset)
 	if err != nil {
-		return nil, my_errors.ErrQueryWorkoutHistory
+		return nil, apperrors.ErrQueryWorkoutHistory
 	}
 	defer monthRows.Close()
 
@@ -337,7 +337,7 @@ func (r *workoutRepository) GetMonthlyHistory(ctx context.Context, userID int64,
 
 	workoutRows, err := db.Query(ctx, workoutsQuery, monthArgs...)
 	if err != nil {
-		return nil, my_errors.ErrQueryWorkoutHistory
+		return nil, apperrors.ErrQueryWorkoutHistory
 	}
 	defer workoutRows.Close()
 

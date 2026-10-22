@@ -32,3 +32,7 @@ func (c *noopCache) Exists(ctx context.Context, keys ...string) (int64, error) {
 func (c *noopCache) SetWithJitter(context.Context, string, interface{}, time.Duration) error {
 	return nil
 }
+
+func (c *noopCache) Close() error {
+	return nil
+}

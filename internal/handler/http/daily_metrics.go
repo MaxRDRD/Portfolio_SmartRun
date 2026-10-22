@@ -8,6 +8,7 @@ import (
 	"SmartRun/internal/usecase/service"
 	"SmartRun/pkg/response"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -81,7 +82,14 @@ func (h *DailyMetricHandler) CreateDailyMetric(w http.ResponseWriter, r *http.Re
 	}
 
 	var req dto.CreateDailyMetricRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&req); err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			response.SendError(w, r, err)
+			return
+		}
 		log.Warn("daily-metrics/create: invalid body", "error", err)
 		response.SendBadRequest(w, "invalid request body")
 		return
@@ -185,7 +193,14 @@ func (h *DailyMetricHandler) UpdateDailyMetric(w http.ResponseWriter, r *http.Re
 
 	var req dto.UpdateDailyMetricRequest
 
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&req); err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			response.SendError(w, r, err)
+			return
+		}
 		log.Warn("daily-metrics/update: invalid body", "error", err)
 		response.SendBadRequest(w, "invalid request body")
 		return
@@ -247,7 +262,14 @@ func (h *DailyMetricHandler) GenerateAdvice(w http.ResponseWriter, r *http.Reque
 		Date string `json:"date"`
 	}
 
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&req); err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			response.SendError(w, r, err)
+			return
+		}
 		log.Warn("daily-metrics/generate-advice: invalid body", "error", err)
 		response.SendBadRequest(w, "invalid request body")
 		return

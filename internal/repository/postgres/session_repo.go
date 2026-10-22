@@ -3,7 +3,7 @@ package postgres
 import (
 	"SmartRun/internal/model"
 	"SmartRun/internal/repository"
-	"SmartRun/pkg/my_errors"
+	"SmartRun/pkg/apperrors"
 	"context"
 	"errors"
 	"fmt"
@@ -41,7 +41,7 @@ func (r *sessionRepository) DeleteSessionByHash(ctx context.Context, hash string
 	}
 
 	if tag.RowsAffected() == 0 {
-		return my_errors.ErrTokenNotFound
+		return apperrors.ErrTokenNotFound
 	}
 
 	return nil
@@ -78,7 +78,7 @@ func (r *sessionRepository) ConsumeSessionByHash(ctx context.Context, hash strin
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			// Нет такого токена, или он уже истёк, или отозван, или удалён другим запросом
-			return 0, my_errors.ErrTokenNotFound
+			return 0, apperrors.ErrTokenNotFound
 		}
 		return 0, fmt.Errorf("failed to consume session: %w", err)
 	}
@@ -125,13 +125,13 @@ func (r *sessionRepository) FindSessionByHash(ctx context.Context, hash string) 
 	)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, my_errors.ErrTokenNotFound
+			return nil, apperrors.ErrTokenNotFound
 		}
 		return nil, fmt.Errorf("FindSessionByHash: %w", err)
 	}
 
 	if session.Revoked || session.ExpiresAt.Before(time.Now().UTC()) {
-		return nil, my_errors.ErrInvalidToken
+		return nil, apperrors.ErrInvalidToken
 	}
 
 	return &session, nil

@@ -9,7 +9,7 @@ import (
 	"SmartRun/internal/ports/outgoing/importer"
 	"SmartRun/internal/repository"
 	validupdate "SmartRun/internal/validate"
-	"SmartRun/pkg/my_errors"
+	"SmartRun/pkg/apperrors"
 	"context"
 	"errors"
 	"fmt"
@@ -79,7 +79,7 @@ func (s *workoutService) Create(ctx context.Context, userID int64, req dto.Creat
 	parsedDate, err := time.Parse("2006-01-02", req.Date)
 
 	if err != nil {
-		return nil, my_errors.ErrInvalidData
+		return nil, apperrors.ErrInvalidData
 	}
 	if parsedDate.Before(minReasonableWorkoutDate) {
 		return nil, errors.New("date must be on or after 1970-01-01")
@@ -117,7 +117,7 @@ func (s *workoutService) Create(ctx context.Context, userID int64, req dto.Creat
 
 		user, err := s.userRepo.GetUserByID(txCtx, userID)
 		if err != nil {
-			return my_errors.ErrUserNotFound
+			return apperrors.ErrUserNotFound
 		}
 
 		calculate.CalculateDerivedMetrics(workout, user)
@@ -208,7 +208,7 @@ func (s *workoutService) Update(ctx context.Context, userID, id int64, req dto.U
 	// 1. Получаем пользователя (нужен для расчётов)
 	user, err := s.userRepo.GetUserByID(ctx, userID)
 	if err != nil {
-		return nil, my_errors.ErrUserNotFound
+		return nil, apperrors.ErrUserNotFound
 	}
 
 	// 2. Загружаем текущее состояние тренировки
@@ -346,7 +346,7 @@ func (s *workoutService) UploadFit(ctx context.Context, userID int64, fileData [
 
 		user, err := s.userRepo.GetUserByID(ctx, userID)
 		if err != nil {
-			return my_errors.ErrUserNotFound
+			return apperrors.ErrUserNotFound
 		}
 
 		calculate.CalculateDerivedMetrics(workout, user)
@@ -401,7 +401,7 @@ func (s *workoutService) RecalculateDailyMetricsForDate(ctx context.Context, use
 		To:     &dayEnd,
 	}
 	workouts, err := s.workoutRepo.GetAllByUserID(ctx, filter)
-	if err != nil && !errors.Is(err, my_errors.ErrWorkoutNotFound) {
+	if err != nil && !errors.Is(err, apperrors.ErrWorkoutNotFound) {
 		return fmt.Errorf("RecalculateDailyMetricsForDate: %w", err)
 	}
 

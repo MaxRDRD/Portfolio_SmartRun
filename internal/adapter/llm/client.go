@@ -5,6 +5,8 @@ import (
 	"SmartRun/internal/model"
 	"context"
 	"fmt"
+	"strings"
+	"time"
 
 	"google.golang.org/genai"
 )
@@ -18,6 +20,8 @@ type geminiCoach struct {
 	client *genai.Client
 }
 
+var _ AICoach = (*geminiCoach)(nil)
+
 // NewGeminiCoach инициализирует клиент Gemini (требует переменную окружения GEMINI_API_KEY)
 func NewGeminiCoach(ctx context.Context) (AICoach, error) {
 	client, err := genai.NewClient(ctx, nil)
@@ -30,8 +34,9 @@ func NewGeminiCoach(ctx context.Context) (AICoach, error) {
 func (c *geminiCoach) GenerateAdvice(ctx context.Context, metric *model.DailyMetric, recentWorkouts []model.Workouts) (string, error) {
 	log := logger.FromContext(ctx)
 
-	// Формируем промпт
-	prompt := fmt.Sprintf(`Ты - профессиональный тренер по бегу. Проанализируй данные спортсмена за сегодня и дай короткую рекомендацию (не более 3 предложений).
+	// Формируем промпт через strings.Builder без лишних аллокаций
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf(`Ты - профессиональный тренер по бегу. Проанализируй данные спортсмена за сегодня и дай короткую рекомендацию (не более 3 предложений).
 
 Сегодняшняя готовность:
 - Readiness Score (Готовность, 0-100): %d
@@ -42,27 +47,31 @@ func (c *geminiCoach) GenerateAdvice(ctx context.Context, metric *model.DailyMet
 - TSB (баланс тренировочного стресса): %.1f
 
 Недавние тренировки:
-`, metric.ReadinessScore, metric.FatigueScore, metric.SleepScore, metric.SleepHours, metric.CTL, metric.ATL, metric.TSB)
+`, metric.ReadinessScore, metric.FatigueScore, metric.SleepScore, metric.SleepHours, metric.CTL, metric.ATL, metric.TSB))
 
 	for i, w := range recentWorkouts {
 		if i >= 3 {
 			break // берем только 3 последние для контекста
 		}
-		prompt += fmt.Sprintf("- Дата: %s, Дистанция: %.1f км, Длительность: %d сек", w.Date.Format("2006-01-02"), w.Distance, w.Duration)
+		sb.WriteString(fmt.Sprintf("- Дата: %s, Дистанция: %.1f км, Длительность: %d сек", w.Date.Format("2006-01-02"), w.Distance, w.Duration))
 		if w.RPE != nil {
-			prompt += fmt.Sprintf(", RPE: %d", *w.RPE)
+			sb.WriteString(fmt.Sprintf(", RPE: %d", *w.RPE))
 		}
 		if w.Feel != nil {
-			prompt += fmt.Sprintf(", Самочувствие: %d", *w.Feel)
+			sb.WriteString(fmt.Sprintf(", Самочувствие: %d", *w.Feel))
 		}
-		prompt += "\n"
+		sb.WriteString("\n")
 	}
 
-	prompt += "\nКакой совет ты дашь на сегодня? (Легкий бег, отдых, тяжелая тренировка?)"
+	sb.WriteString("\nКакой совет ты дашь на сегодня? (Легкий бег, отдых, тяжелая тренировка?)")
+	prompt := sb.String()
 
 	log.Info("Отправляем запрос к Gemini", "prompt_len", len(prompt))
 
-	resp, err := c.client.Models.GenerateContent(ctx, "gemini-3.7-flash", genai.Text(prompt), nil)
+	llmCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+
+	resp, err := c.client.Models.GenerateContent(llmCtx, "gemini-3.7-flash", genai.Text(prompt), nil)
 	if err != nil {
 		log.Error("ошибка при обращении к Gemini API", "error", err)
 		return "", fmt.Errorf("GenerateAdvice: %w", err)

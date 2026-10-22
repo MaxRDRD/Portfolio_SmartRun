@@ -2,7 +2,7 @@ package postgres
 
 import (
 	"SmartRun/internal/repository"
-	"SmartRun/pkg/my_errors"
+	"SmartRun/pkg/apperrors"
 	"context"
 	"errors"
 	"fmt"
@@ -52,7 +52,7 @@ func (r *passwordResetRepo) FindResetByTokenHash(ctx context.Context, tokenHash 
 	err = db.QueryRow(ctx, query, tokenHash).Scan(&userID, &used)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return 0, false, my_errors.ErrTokenNotFound
+			return 0, false, apperrors.ErrTokenNotFound
 		}
 		return 0, false, fmt.Errorf("FindResetByTokenHash: %w", err)
 	}
@@ -73,7 +73,7 @@ func (r *passwordResetRepo) MarkAsUsed(ctx context.Context, tokenHash string) er
 		return fmt.Errorf("MarkAsUsed: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
-		return my_errors.ErrPasswordResetHashNotFound
+		return apperrors.ErrPasswordResetHashNotFound
 	}
 	return nil
 }
@@ -116,7 +116,7 @@ func (r *passwordResetRepo) ConsumeResetToken(ctx context.Context, tokenHash str
 	// - истёк срок, ИЛИ
 	// - не принадлежит этому пользователю
 	if tag.RowsAffected() == 0 {
-		return my_errors.ErrInvalidToken
+		return apperrors.ErrInvalidToken
 	}
 
 	return nil
@@ -133,7 +133,7 @@ func (r *passwordResetRepo) DeleteResetToken(ctx context.Context, tokenHash stri
 		return fmt.Errorf("DeleteResetToken: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
-		return my_errors.ErrPasswordResetHashNotFound
+		return apperrors.ErrPasswordResetHashNotFound
 	}
 	return nil
 

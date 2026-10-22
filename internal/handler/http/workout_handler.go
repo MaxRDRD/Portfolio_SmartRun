@@ -7,9 +7,10 @@ import (
 	"SmartRun/internal/mapper"
 	"SmartRun/internal/model"
 	"SmartRun/internal/usecase/service"
-	"SmartRun/pkg/my_errors"
+	"SmartRun/pkg/apperrors"
 	"SmartRun/pkg/response"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"strconv"
@@ -47,7 +48,14 @@ func (h *WorkoutHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	if strings.HasPrefix(contentType, "application/json") {
 		var req dto.CreateRequest
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		dec := json.NewDecoder(r.Body)
+		dec.DisallowUnknownFields()
+		if err := dec.Decode(&req); err != nil {
+			var maxBytesErr *http.MaxBytesError
+			if errors.As(err, &maxBytesErr) {
+				response.SendError(w, r, err)
+				return
+			}
 			log.Warn("workouts/create: invalid json", "error", err)
 			response.SendBadRequest(w, "invalid JSON body")
 			return
@@ -86,7 +94,7 @@ func (h *WorkoutHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	if workout == nil || workout.ID <= 0 {
 		log.Error("workouts/create: success path without persisted workout id", "user_id", userID)
-		response.SendError(w, r, my_errors.ErrInternal)
+		response.SendError(w, r, apperrors.ErrInternal)
 		return
 	}
 
@@ -117,7 +125,14 @@ func (h *WorkoutHandler) Update(w http.ResponseWriter, r *http.Request) {
 	log := logger.FromContext(r.Context())
 	var req dto.UpdateRequest
 
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&req); err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			response.SendError(w, r, err)
+			return
+		}
 		log.Warn("workouts/update: invalid body", "error", err)
 		response.SendBadRequest(w, "invalid request body")
 		return

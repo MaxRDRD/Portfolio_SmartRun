@@ -2,8 +2,8 @@ package postgres
 
 import (
 	"SmartRun/internal/repository"
-	mycrypto "SmartRun/pkg/my_crypto"
-	"SmartRun/pkg/my_errors"
+	"SmartRun/pkg/appcrypto"
+	"SmartRun/pkg/apperrors"
 	"context"
 	"errors"
 	"fmt"
@@ -41,7 +41,7 @@ func (r *totpRepository) GetTOTPSecret(ctx context.Context, userID int64) (strin
 	}
 
 	// Дешифруем
-	plaintextSecret, err := mycrypto.Decrypt(TOTPSecret)
+	plaintextSecret, err := appcrypto.Decrypt(TOTPSecret)
 	if err != nil {
 		return "", fmt.Errorf("failed to decrypt TOTP secret: %w", err)
 	}
@@ -52,7 +52,7 @@ func (r *totpRepository) GetTOTPSecret(ctx context.Context, userID int64) (strin
 func (r *totpRepository) UpdateTOTPSecret(ctx context.Context, userID int64, secret string, enabled bool) error {
 	db := r.getDB(ctx)
 
-	encrypted, err := mycrypto.Encrypt(secret)
+	encrypted, err := appcrypto.Encrypt(secret)
 	if err != nil {
 		return fmt.Errorf("failed to encrypt TOTP secret: %w", err)
 	}
@@ -70,7 +70,7 @@ func (r *totpRepository) UpdateTOTPSecret(ctx context.Context, userID int64, sec
 	}
 
 	if tag.RowsAffected() == 0 {
-		return my_errors.ErrSecretNotFound
+		return apperrors.ErrSecretNotFound
 	}
 
 	return nil

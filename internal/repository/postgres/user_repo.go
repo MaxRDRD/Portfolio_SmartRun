@@ -4,7 +4,7 @@ import (
 	"SmartRun/internal/cache"
 	"SmartRun/internal/model"
 	"SmartRun/internal/repository"
-	"SmartRun/pkg/my_errors"
+	"SmartRun/pkg/apperrors"
 	"context"
 	"encoding/json"
 	"errors"
@@ -83,7 +83,7 @@ func (r *userRepository) CreateUser(ctx context.Context, user *model.User) error
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			return my_errors.ErrUserAlreadyExists
+			return apperrors.ErrUserAlreadyExists
 		}
 		return fmt.Errorf("CreateUser: %w", err)
 	}
@@ -137,7 +137,7 @@ func (r *userRepository) GetUserByEmail(ctx context.Context, email string) (*mod
 		)
 
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, my_errors.ErrUserNotFound
+			return nil, apperrors.ErrUserNotFound
 		}
 		if err != nil {
 			return nil, fmt.Errorf("GetUserByEmail: %w", err)
@@ -202,7 +202,7 @@ func (r *userRepository) GetUserByID(ctx context.Context, id int64) (*model.User
 		)
 
 		if errors.Is(err, pgx.ErrNoRows) {
-			return nil, my_errors.ErrUserNotFound
+			return nil, apperrors.ErrUserNotFound
 		}
 		if err != nil {
 			return nil, fmt.Errorf("GetUserByID: %w", err)
@@ -236,7 +236,7 @@ func (r *userRepository) GetEmailByID(ctx context.Context, id int64) (string, er
 	var email string
 	err := db.QueryRow(ctx, query, id).Scan(&email)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", my_errors.ErrUserNotFound
+		return "", apperrors.ErrUserNotFound
 	}
 	if err != nil {
 		return "", fmt.Errorf("GetEmailByID: %w", err)
@@ -260,7 +260,7 @@ func (r *userRepository) UpdatePassword(ctx context.Context, userID int64, newHa
 		return fmt.Errorf("UpdatePassword: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
-		return my_errors.ErrUserNotFound
+		return apperrors.ErrUserNotFound
 	}
 
 	return nil
@@ -291,7 +291,7 @@ func (r *userRepository) UpdateUser(ctx context.Context, user *model.User) error
 		return fmt.Errorf("UpdateUser: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
-		return my_errors.ErrUserNotFound
+		return apperrors.ErrUserNotFound
 	}
 	return nil
 }

@@ -6,7 +6,7 @@ import (
 	"SmartRun/internal/logger"
 	"SmartRun/internal/model"
 	"SmartRun/internal/repository"
-	"SmartRun/pkg/my_errors"
+	"SmartRun/pkg/apperrors"
 	"context"
 	"encoding/json"
 	"errors"
@@ -212,7 +212,7 @@ func (r *metricsRepository) GetAllMetricsByID(ctx context.Context, filter dto.Me
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				log.Warn("metrics repo: stored metrics not found", "user_id", filter.UserID)
-				return nil, my_errors.ErrMetricNotFound
+				return nil, apperrors.ErrMetricNotFound
 			}
 			log.Error("metrics repo: query stored failed", "user_id", filter.UserID, "error", err)
 			return nil, fmt.Errorf("query metrics: %w", err)

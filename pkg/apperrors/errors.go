@@ -1,6 +1,9 @@
-package my_errors
+package apperrors
 
-import "errors"
+import (
+	"errors"
+	"net/http"
+)
 
 var (
 	// auth / user
@@ -38,6 +41,10 @@ var (
 	//daily_metrics
 	ErrDailyMetricNotFound      = errors.New("daily metric not found")
 	ErrDailyMetricAlreadyExists = errors.New("daily metric already exists")
+
+	// Ошибки валидации входных данных (400 Bad Request)
+	ErrFileTypeTooLong = errors.New("file_type exceeds maximum length of 100 characters")
+	ErrInvalidFileSize = errors.New("file size cannot be negative")
 )
 
 func HTTPStatus(err error) int {
@@ -63,11 +70,15 @@ func HTTPStatus(err error) int {
 		}
 	}
 	//400
-	BadRequest := []error{ErrInvalidData}
+	BadRequest := []error{ErrInvalidData, ErrFileTypeTooLong, ErrInvalidFileSize}
 	for _, target := range BadRequest {
 		if errors.Is(err, target) {
 			return 400
 		}
+	}
+	var maxBytesErr *http.MaxBytesError
+	if errors.As(err, &maxBytesErr) {
+		return http.StatusRequestEntityTooLarge
 	}
 	return 500
 }

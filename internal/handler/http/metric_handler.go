@@ -8,6 +8,7 @@ import (
 	"SmartRun/internal/usecase/service"
 	"SmartRun/pkg/response"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 	"time"
@@ -51,7 +52,14 @@ func (h *MetricHandler) CreateMetrics(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req dto.CreateMetricsRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&req); err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			response.SendError(w, r, err)
+			return
+		}
 		log.Warn("metrics/create: invalid request body", "error", err)
 		response.SendBadRequest(w, "invalid request body")
 		return
@@ -159,7 +167,14 @@ func (h *MetricHandler) UpdateMetrics(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req dto.UpdateMetricsRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&req); err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			response.SendError(w, r, err)
+			return
+		}
 		log.Warn("metrics/update: invalid request body", "error", err)
 		response.SendBadRequest(w, "invalid request body")
 		return

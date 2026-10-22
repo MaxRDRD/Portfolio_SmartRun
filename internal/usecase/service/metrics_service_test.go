@@ -5,7 +5,7 @@ import (
 	"SmartRun/internal/model"
 	"SmartRun/internal/usecase/service"
 	"SmartRun/internal/usecase/service/mocks"
-	"SmartRun/pkg/my_errors"
+	"SmartRun/pkg/apperrors"
 	"context"
 	"errors"
 	"testing"
@@ -94,12 +94,12 @@ func TestMetricService_GetMetrics(t *testing.T) {
 		svc := service.NewMetricsService(mockRepo, validator.New())
 
 		mockRepo.On("GetMetricsByID", mock.Anything, mock.Anything).
-			Return(nil, my_errors.ErrMetricNotFound).Once()
+			Return(nil, apperrors.ErrMetricNotFound).Once()
 
 		res, err := svc.GetMetrics(context.Background(), dto.MetricsFilter{UserID: 1})
 		require.Error(t, err)
 		assert.Nil(t, res)
-		assert.ErrorIs(t, err, my_errors.ErrMetricNotFound)
+		assert.ErrorIs(t, err, apperrors.ErrMetricNotFound)
 		mockRepo.AssertExpectations(t)
 	})
 }
@@ -123,12 +123,12 @@ func TestMetricService_GetAllMetrics(t *testing.T) {
 		svc := service.NewMetricsService(mockRepo, validator.New())
 
 		mockRepo.On("GetAllMetricsByID", mock.Anything, mock.Anything).
-			Return(nil, my_errors.ErrMetricNotFound).Once()
+			Return(nil, apperrors.ErrMetricNotFound).Once()
 
 		res, err := svc.GetAllMetrics(context.Background(), dto.MetricsFilter{UserID: 1})
 		require.Error(t, err)
 		assert.Nil(t, res)
-		assert.ErrorIs(t, err, my_errors.ErrMetricNotFound)
+		assert.ErrorIs(t, err, apperrors.ErrMetricNotFound)
 		mockRepo.AssertExpectations(t)
 	})
 }

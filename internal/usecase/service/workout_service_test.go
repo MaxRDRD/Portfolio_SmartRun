@@ -6,7 +6,7 @@ import (
 	"SmartRun/internal/model"
 	"SmartRun/internal/ports/outgoing/importer"
 	"SmartRun/internal/usecase/service"
-	"SmartRun/pkg/my_errors"
+	"SmartRun/pkg/apperrors"
 	"context"
 	"errors"
 	"testing"
@@ -177,7 +177,7 @@ func TestWorkoutService_Create(t *testing.T) {
 			},
 			setupMocks:  func(m workoutMocks) {},
 			wantErr:     true,
-			expectedErr: my_errors.ErrInvalidData,
+			expectedErr: apperrors.ErrInvalidData,
 		},
 		{
 			name:   "Error: Date before 1970",
@@ -205,7 +205,7 @@ func TestWorkoutService_Create(t *testing.T) {
 				m.userRepo.On("GetUserByID", mock.Anything, int64(99)).Return(nil, errors.New("not found")).Once()
 			},
 			wantErr:     true,
-			expectedErr: my_errors.ErrUserNotFound,
+			expectedErr: apperrors.ErrUserNotFound,
 		},
 		{
 			name:   "Error: Repo failure aborts transaction and skips publishing",
@@ -272,13 +272,13 @@ func TestWorkoutService_GetByID(t *testing.T) {
 	t.Run("Error: Not Found", func(t *testing.T) {
 		m := newWorkoutMocks()
 		m.workoutRepo.On("GetByID", mock.Anything, int64(99), int64(1)).
-			Return(nil, my_errors.ErrWorkoutNotFound).Once()
+			Return(nil, apperrors.ErrWorkoutNotFound).Once()
 
 		svc := m.newService()
 		res, err := svc.GetByID(context.Background(), 99, 1)
 		require.Error(t, err)
 		assert.Nil(t, res)
-		assert.ErrorIs(t, err, my_errors.ErrWorkoutNotFound)
+		assert.ErrorIs(t, err, apperrors.ErrWorkoutNotFound)
 		m.assertExpectations(t)
 	})
 }
@@ -344,7 +344,7 @@ func TestWorkoutService_Delete(t *testing.T) {
 
 	t.Run("Error: Workout not found before deletion", func(t *testing.T) {
 		m := newWorkoutMocks()
-		m.workoutRepo.On("GetByID", mock.Anything, int64(99), int64(1)).Return(nil, my_errors.ErrWorkoutNotFound).Once()
+		m.workoutRepo.On("GetByID", mock.Anything, int64(99), int64(1)).Return(nil, apperrors.ErrWorkoutNotFound).Once()
 
 		svc := m.newService()
 		err := svc.Delete(context.Background(), 99, 1)
@@ -547,7 +547,7 @@ func TestWorkoutService_Update(t *testing.T) {
 		res, err := svc.Update(context.Background(), 99, 10, dto.UpdateRequest{}, false)
 		require.Error(t, err)
 		assert.Nil(t, res)
-		assert.ErrorIs(t, err, my_errors.ErrUserNotFound)
+		assert.ErrorIs(t, err, apperrors.ErrUserNotFound)
 		m.assertExpectations(t)
 	})
 
@@ -824,4 +824,3 @@ func TestWorkoutService_RecalculateDailyMetricsForDate(t *testing.T) {
 		m.assertExpectations(t)
 	})
 }
-

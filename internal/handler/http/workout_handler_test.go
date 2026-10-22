@@ -6,7 +6,7 @@ import (
 	my_http "SmartRun/internal/handler/http"
 	"SmartRun/internal/handler/http/mocks"
 	"SmartRun/internal/model"
-	"SmartRun/pkg/my_errors"
+	"SmartRun/pkg/apperrors"
 	"context"
 	"encoding/json"
 	"errors"
@@ -71,7 +71,7 @@ func TestWorkoutHandler_Create(t *testing.T) {
 			body:        validBody,
 			mockBehavior: func(m *mocks.WorkoutService) {
 				m.On("Create", mock.Anything, int64(12), mock.AnythingOfType("dto.CreateRequest")).
-					Return(nil, my_errors.ErrInvalidData).Once()
+					Return(nil, apperrors.ErrInvalidData).Once()
 			},
 			expectedStatus: http.StatusBadRequest,
 			checkResponse: func(t *testing.T, rec *httptest.ResponseRecorder) {
@@ -92,11 +92,11 @@ func TestWorkoutHandler_Create(t *testing.T) {
 			},
 		},
 		{
-			name:        "400 Bad Request on failed to read fit body",
-			authUserID:  Ptr(int64(12)),
-			contentType: "application/octet-stream",
-			bodyReader:  errReader{},
-			mockBehavior: func(m *mocks.WorkoutService) {},
+			name:           "400 Bad Request on failed to read fit body",
+			authUserID:     Ptr(int64(12)),
+			contentType:    "application/octet-stream",
+			bodyReader:     errReader{},
+			mockBehavior:   func(m *mocks.WorkoutService) {},
 			expectedStatus: http.StatusBadRequest,
 			checkResponse: func(t *testing.T, rec *httptest.ResponseRecorder) {
 				assert.Contains(t, rec.Body.String(), "failed to read file")
@@ -134,7 +134,7 @@ func TestWorkoutHandler_Create(t *testing.T) {
 			body:        "corrupted-fit-data",
 			mockBehavior: func(m *mocks.WorkoutService) {
 				m.On("UploadFit", mock.Anything, int64(12), []byte("corrupted-fit-data")).
-					Return(nil, my_errors.ErrInvalidData).Once()
+					Return(nil, apperrors.ErrInvalidData).Once()
 			},
 			expectedStatus: http.StatusBadRequest,
 			checkResponse: func(t *testing.T, rec *httptest.ResponseRecorder) {
@@ -290,7 +290,7 @@ func TestWorkoutHandler_Update(t *testing.T) {
 			body:        validBody,
 			mockBehavior: func(m *mocks.WorkoutService) {
 				m.On("Update", mock.Anything, int64(12), int64(999), mock.AnythingOfType("dto.UpdateRequest"), false).
-					Return(nil, my_errors.ErrWorkoutNotFound).Once()
+					Return(nil, apperrors.ErrWorkoutNotFound).Once()
 			},
 			expectedStatus: http.StatusNotFound,
 			checkResponse: func(t *testing.T, rec *httptest.ResponseRecorder) {
@@ -488,7 +488,7 @@ func TestWorkoutHandler_GetAll(t *testing.T) {
 			authUserID: Ptr(int64(12)),
 			mockBehavior: func(m *mocks.WorkoutService) {
 				m.On("GetAllByID", mock.Anything, mock.AnythingOfType("dto.WorkoutFilter")).
-					Return(([]model.Workouts)(nil), my_errors.ErrWorkoutNotFound).Once()
+					Return(([]model.Workouts)(nil), apperrors.ErrWorkoutNotFound).Once()
 			},
 			expectedStatus: http.StatusNotFound,
 			checkResponse: func(t *testing.T, rec *httptest.ResponseRecorder) {
@@ -605,7 +605,7 @@ func TestWorkoutHandler_GetHistoryByMonth(t *testing.T) {
 			authUserID: Ptr(int64(12)),
 			mockBehavior: func(m *mocks.WorkoutService) {
 				m.On("GetMonthlyHistory", mock.Anything, int64(12), 3, 0).
-					Return(([]model.WorkoutMonthHistory)(nil), my_errors.ErrWorkoutNotFound).Once()
+					Return(([]model.WorkoutMonthHistory)(nil), apperrors.ErrWorkoutNotFound).Once()
 			},
 			expectedStatus: http.StatusNotFound,
 			checkResponse: func(t *testing.T, rec *httptest.ResponseRecorder) {
@@ -759,7 +759,7 @@ func TestWorkoutHandler_GetByID(t *testing.T) {
 			authUserID: Ptr(int64(12)),
 			mockBehavior: func(m *mocks.WorkoutService) {
 				m.On("GetByID", mock.Anything, int64(1), int64(12)).
-					Return(nil, my_errors.ErrWorkoutNotFound).Once()
+					Return(nil, apperrors.ErrWorkoutNotFound).Once()
 			},
 			expectedStatus: http.StatusNotFound,
 			checkResponse: func(t *testing.T, rec *httptest.ResponseRecorder) {
@@ -863,7 +863,7 @@ func TestWorkoutHandler_Delete(t *testing.T) {
 			authUserID: Ptr(int64(12)),
 			mockBehavior: func(m *mocks.WorkoutService) {
 				m.On("Delete", mock.Anything, int64(1), int64(12)).
-					Return(my_errors.ErrWorkoutNotFound).Once()
+					Return(apperrors.ErrWorkoutNotFound).Once()
 			},
 			expectedStatus: http.StatusNotFound,
 			checkResponse: func(t *testing.T, rec *httptest.ResponseRecorder) {

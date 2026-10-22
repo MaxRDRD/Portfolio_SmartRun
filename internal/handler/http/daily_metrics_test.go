@@ -6,7 +6,7 @@ import (
 	my_http "SmartRun/internal/handler/http"
 	"SmartRun/internal/handler/http/mocks"
 	"SmartRun/internal/model"
-	"SmartRun/pkg/my_errors"
+	"SmartRun/pkg/apperrors"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -64,13 +64,13 @@ func TestDailyMetricHandler_CreateDailyMetric(t *testing.T) {
 			},
 		},
 		{
-			name:        "409 Conflict on duplicate metric",
-			authUserID:  Ptr(int64(12)),
-			body:        validBodyWithDate,
+			name:       "409 Conflict on duplicate metric",
+			authUserID: Ptr(int64(12)),
+			body:       validBodyWithDate,
 			mockBehavior: func(m *mocks.DailyMetricService) {
 				m.On("CreateDailyMetric", mock.Anything, mock.MatchedBy(func(m model.DailyMetric) bool {
 					return m.UserID == 12 && m.SleepScore == 85
-				})).Return(nil, my_errors.ErrDailyMetricAlreadyExists).Once()
+				})).Return(nil, apperrors.ErrDailyMetricAlreadyExists).Once()
 			},
 			expectedStatus: http.StatusConflict,
 			checkResponse: func(t *testing.T, rec *httptest.ResponseRecorder) {
@@ -78,9 +78,9 @@ func TestDailyMetricHandler_CreateDailyMetric(t *testing.T) {
 			},
 		},
 		{
-			name:        "201 Created Success with explicit date",
-			authUserID:  Ptr(int64(12)),
-			body:        validBodyWithDate,
+			name:       "201 Created Success with explicit date",
+			authUserID: Ptr(int64(12)),
+			body:       validBodyWithDate,
 			mockBehavior: func(m *mocks.DailyMetricService) {
 				expectedDate := time.Date(2026, 2, 15, 0, 0, 0, 0, time.UTC)
 				created := &model.DailyMetric{
@@ -119,9 +119,9 @@ func TestDailyMetricHandler_CreateDailyMetric(t *testing.T) {
 			},
 		},
 		{
-			name:        "201 Created Success without date (uses now)",
-			authUserID:  Ptr(int64(12)),
-			body:        validBodyNoDate,
+			name:       "201 Created Success without date (uses now)",
+			authUserID: Ptr(int64(12)),
+			body:       validBodyNoDate,
 			mockBehavior: func(m *mocks.DailyMetricService) {
 				created := &model.DailyMetric{
 					ID:             502,
@@ -194,7 +194,7 @@ func TestDailyMetricHandler_GetDailyMetrics(t *testing.T) {
 			authUserID: Ptr(int64(12)),
 			mockBehavior: func(m *mocks.DailyMetricService) {
 				m.On("GetAllDailyMetrics", mock.Anything, int64(12)).
-					Return(nil, my_errors.ErrDailyMetricNotFound).Once()
+					Return(nil, apperrors.ErrDailyMetricNotFound).Once()
 			},
 			expectedStatus: http.StatusNotFound,
 			checkResponse: func(t *testing.T, rec *httptest.ResponseRecorder) {
@@ -306,7 +306,7 @@ func TestDailyMetricHandler_GetDailyMetricByID(t *testing.T) {
 			authUserID: Ptr(int64(12)),
 			mockBehavior: func(m *mocks.DailyMetricService) {
 				m.On("GetDailyMetricByID", mock.Anything, int64(999), int64(12)).
-					Return(nil, my_errors.ErrDailyMetricNotFound).Once()
+					Return(nil, apperrors.ErrDailyMetricNotFound).Once()
 			},
 			expectedStatus: http.StatusNotFound,
 			checkResponse: func(t *testing.T, rec *httptest.ResponseRecorder) {
@@ -431,13 +431,13 @@ func TestDailyMetricHandler_UpdateDailyMetric(t *testing.T) {
 			},
 		},
 		{
-			name:        "404 Not Found on service error",
-			authUserID:  Ptr(int64(12)),
-			body:        validBody,
+			name:       "404 Not Found on service error",
+			authUserID: Ptr(int64(12)),
+			body:       validBody,
 			mockBehavior: func(m *mocks.DailyMetricService) {
 				m.On("UpdateDailyMetric", mock.Anything, mock.MatchedBy(func(req dto.UpdateDailyMetricRequest) bool {
 					return req.ID == 501 && req.UserID == 12
-				})).Return(nil, my_errors.ErrDailyMetricNotFound).Once()
+				})).Return(nil, apperrors.ErrDailyMetricNotFound).Once()
 			},
 			expectedStatus: http.StatusNotFound,
 			checkResponse: func(t *testing.T, rec *httptest.ResponseRecorder) {
@@ -445,9 +445,9 @@ func TestDailyMetricHandler_UpdateDailyMetric(t *testing.T) {
 			},
 		},
 		{
-			name:        "200 Success",
-			authUserID:  Ptr(int64(12)),
-			body:        validBody,
+			name:       "200 Success",
+			authUserID: Ptr(int64(12)),
+			body:       validBody,
 			mockBehavior: func(m *mocks.DailyMetricService) {
 				updated := &model.DailyMetric{
 					ID:             501,
@@ -536,7 +536,7 @@ func TestDailyMetricHandler_DeleteDailyMetric(t *testing.T) {
 			authUserID: Ptr(int64(12)),
 			mockBehavior: func(m *mocks.DailyMetricService) {
 				m.On("DeleteDailyMetric", mock.Anything, int64(999), int64(12)).
-					Return(my_errors.ErrDailyMetricNotFound).Once()
+					Return(apperrors.ErrDailyMetricNotFound).Once()
 			},
 			expectedStatus: http.StatusNotFound,
 			checkResponse: func(t *testing.T, rec *httptest.ResponseRecorder) {
@@ -649,13 +649,13 @@ func TestDailyMetricHandler_GenerateAdvice(t *testing.T) {
 			},
 		},
 		{
-			name:        "500 Internal Server Error on service failure",
-			authUserID:  Ptr(int64(12)),
-			body:        validBody,
+			name:       "500 Internal Server Error on service failure",
+			authUserID: Ptr(int64(12)),
+			body:       validBody,
 			mockBehavior: func(m *mocks.DailyMetricService) {
 				expectedDate := time.Date(2026, 2, 15, 0, 0, 0, 0, time.UTC)
 				m.On("TriggerAdviceGeneration", mock.Anything, int64(12), expectedDate).
-					Return(my_errors.ErrInternal).Once()
+					Return(apperrors.ErrInternal).Once()
 			},
 			expectedStatus: http.StatusInternalServerError,
 			checkResponse: func(t *testing.T, rec *httptest.ResponseRecorder) {
@@ -663,9 +663,9 @@ func TestDailyMetricHandler_GenerateAdvice(t *testing.T) {
 			},
 		},
 		{
-			name:        "202 Accepted Success",
-			authUserID:  Ptr(int64(12)),
-			body:        validBody,
+			name:       "202 Accepted Success",
+			authUserID: Ptr(int64(12)),
+			body:       validBody,
 			mockBehavior: func(m *mocks.DailyMetricService) {
 				expectedDate := time.Date(2026, 2, 15, 0, 0, 0, 0, time.UTC)
 				m.On("TriggerAdviceGeneration", mock.Anything, int64(12), expectedDate).
@@ -706,4 +706,3 @@ func TestToDailyMetricResponse_Nil(t *testing.T) {
 	res := my_http.ExportToDailyMetricResponse(nil)
 	assert.Equal(t, int64(0), res.ID)
 }
-

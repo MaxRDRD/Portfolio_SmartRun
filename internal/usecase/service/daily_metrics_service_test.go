@@ -96,7 +96,7 @@ func TestDailyMetricService_UpdateDailyMetric(t *testing.T) {
 		UserID:         1,
 		Date:           anchorDate,
 		SleepScore:     90, // обновленный сон
-		SleepHours:    8.0,
+		SleepHours:     8.0,
 		StressAvg:      20,
 		BodyBatteryAvg: 80,
 		Steps:          10000,

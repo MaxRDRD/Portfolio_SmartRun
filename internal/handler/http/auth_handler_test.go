@@ -5,7 +5,7 @@ import (
 	"SmartRun/internal/dto"
 	my_http "SmartRun/internal/handler/http"
 	"SmartRun/internal/handler/http/mocks"
-	"SmartRun/pkg/my_errors"
+	"SmartRun/pkg/apperrors"
 	"bytes"
 	"encoding/json"
 	"net/http"
@@ -88,7 +88,7 @@ func TestUserHandler_Register(t *testing.T) {
 			body:        validBody,
 			mockBehavior: func(m *mocks.AuthService) {
 				m.On("Register", mock.Anything, mock.AnythingOfType("dto.RegisterRequest")).
-					Return(nil, my_errors.ErrUserAlreadyExists).
+					Return(nil, apperrors.ErrUserAlreadyExists).
 					Once()
 			},
 			expectedStatus: http.StatusConflict,
@@ -229,7 +229,7 @@ func TestUserHandler_Login(t *testing.T) {
 			body:        validBody,
 			mockBehavior: func(m *mocks.AuthService) {
 				m.On("Login", mock.Anything, mock.AnythingOfType("dto.LoginRequest")).
-					Return(nil, my_errors.ErrInvalidCredentials).
+					Return(nil, apperrors.ErrInvalidCredentials).
 					Once()
 			},
 			expectedStatus: http.StatusUnauthorized,
@@ -324,7 +324,7 @@ func TestUserHandler_Refresh(t *testing.T) {
 			},
 			mockBehavior: func(m *mocks.AuthService) {
 				m.On("Refresh", mock.Anything, "expired-or-revoked-token").
-					Return(nil, my_errors.ErrTokenNotFound).
+					Return(nil, apperrors.ErrTokenNotFound).
 					Once()
 			},
 			expectedStatus: http.StatusUnauthorized,

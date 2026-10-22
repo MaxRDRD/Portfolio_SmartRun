@@ -6,7 +6,7 @@ import (
 	"SmartRun/internal/dto"
 	"SmartRun/internal/model"
 	"SmartRun/internal/usecase/service"
-	"SmartRun/pkg/my_errors"
+	"SmartRun/pkg/apperrors"
 	"context"
 	"errors"
 	"testing"
@@ -72,7 +72,7 @@ func TestAuthService_Register(t *testing.T) {
 		svc, userRepo, sessionRepo, _, _, _, txManager, _ := setupAuthTest(t)
 
 		txManager.On("WithTransaction", ctx, mock.Anything).Return(nil)
-		userRepo.On("GetUserByEmail", ctx, "runner@example.com").Return(nil, my_errors.ErrUserNotFound)
+		userRepo.On("GetUserByEmail", ctx, "runner@example.com").Return(nil, apperrors.ErrUserNotFound)
 		userRepo.On("CreateUser", ctx, mock.MatchedBy(func(u *model.User) bool {
 			return u.Email == "runner@example.com" && u.Name == "Ivan Runner" && u.Age == 28
 		})).Run(func(args mock.Arguments) {
@@ -134,7 +134,7 @@ func TestAuthService_Register(t *testing.T) {
 
 		res, err := svc.Register(ctx, req)
 		require.Error(t, err)
-		assert.True(t, errors.Is(err, my_errors.ErrUserAlreadyExists))
+		assert.True(t, errors.Is(err, apperrors.ErrUserAlreadyExists))
 		assert.Nil(t, res)
 	})
 }
@@ -212,14 +212,14 @@ func TestAuthService_Login(t *testing.T) {
 
 		res, err := svc.Login(ctx, req)
 		require.Error(t, err)
-		assert.True(t, errors.Is(err, my_errors.ErrInvalidCredentials))
+		assert.True(t, errors.Is(err, apperrors.ErrInvalidCredentials))
 		assert.Nil(t, res)
 	})
 
 	t.Run("user not found", func(t *testing.T) {
 		svc, userRepo, _, _, _, _, _, _ := setupAuthTest(t)
 
-		userRepo.On("GetUserByEmail", ctx, "unknown@example.com").Return(nil, my_errors.ErrUserNotFound)
+		userRepo.On("GetUserByEmail", ctx, "unknown@example.com").Return(nil, apperrors.ErrUserNotFound)
 
 		req := dto.LoginRequest{
 			Email:    "unknown@example.com",
@@ -228,7 +228,7 @@ func TestAuthService_Login(t *testing.T) {
 
 		res, err := svc.Login(ctx, req)
 		require.Error(t, err)
-		assert.True(t, errors.Is(err, my_errors.ErrInvalidCredentials))
+		assert.True(t, errors.Is(err, apperrors.ErrInvalidCredentials))
 		assert.Nil(t, res)
 	})
 
@@ -268,7 +268,7 @@ func TestAuthService_GetUserByID(t *testing.T) {
 	t.Run("not found", func(t *testing.T) {
 		svc, userRepo, _, _, _, _, _, _ := setupAuthTest(t)
 
-		userRepo.On("GetUserByID", ctx, int64(99)).Return(nil, my_errors.ErrUserNotFound)
+		userRepo.On("GetUserByID", ctx, int64(99)).Return(nil, apperrors.ErrUserNotFound)
 
 		res, err := svc.GetUserByID(ctx, 99)
 		require.Error(t, err)
@@ -288,7 +288,7 @@ func TestAuthService_UpdateUser(t *testing.T) {
 			Name:  "Old Name",
 		}
 		userRepo.On("GetUserByID", ctx, int64(1)).Return(initialUser, nil)
-		userRepo.On("GetUserByEmail", ctx, "new@example.com").Return(nil, my_errors.ErrUserNotFound)
+		userRepo.On("GetUserByEmail", ctx, "new@example.com").Return(nil, apperrors.ErrUserNotFound)
 		userRepo.On("UpdateUser", ctx, mock.MatchedBy(func(u *model.User) bool {
 			return u.Email == "new@example.com" && u.Name == "New Name"
 		})).Return(nil)
@@ -331,7 +331,7 @@ func TestAuthService_UpdateUser(t *testing.T) {
 
 		res, err := svc.UpdateUser(ctx, 1, req)
 		require.Error(t, err)
-		assert.True(t, errors.Is(err, my_errors.ErrUserAlreadyExists))
+		assert.True(t, errors.Is(err, apperrors.ErrUserAlreadyExists))
 		assert.Nil(t, res)
 	})
 }
@@ -365,7 +365,7 @@ func TestAuthService_Logout(t *testing.T) {
 
 		err := svc.Logout(ctx, "")
 		require.Error(t, err)
-		assert.True(t, errors.Is(err, my_errors.ErrInvalidToken))
+		assert.True(t, errors.Is(err, apperrors.ErrInvalidToken))
 	})
 }
 
@@ -397,7 +397,7 @@ func TestAuthService_Refresh(t *testing.T) {
 
 		res, err := svc.Refresh(ctx, "")
 		require.Error(t, err)
-		assert.True(t, errors.Is(err, my_errors.ErrInvalidToken))
+		assert.True(t, errors.Is(err, apperrors.ErrInvalidToken))
 		assert.Nil(t, res)
 	})
 
@@ -405,7 +405,7 @@ func TestAuthService_Refresh(t *testing.T) {
 		svc, _, sessionRepo, _, _, _, txManager, _ := setupAuthTest(t)
 
 		txManager.On("WithTransaction", ctx, mock.Anything).Return(nil)
-		sessionRepo.On("ConsumeSessionByHash", ctx, mock.AnythingOfType("string")).Return(int64(0), my_errors.ErrTokenNotFound)
+		sessionRepo.On("ConsumeSessionByHash", ctx, mock.AnythingOfType("string")).Return(int64(0), apperrors.ErrTokenNotFound)
 
 		res, err := svc.Refresh(ctx, "expired-token")
 		require.Error(t, err)
@@ -517,11 +517,11 @@ func TestAuthService_PasswordReset(t *testing.T) {
 	t.Run("RequestPasswordReset user not found", func(t *testing.T) {
 		svc, userRepo, _, _, _, _, _, _ := setupAuthTest(t)
 
-		userRepo.On("GetUserByEmail", ctx, "ghost@example.com").Return(nil, my_errors.ErrUserNotFound)
+		userRepo.On("GetUserByEmail", ctx, "ghost@example.com").Return(nil, apperrors.ErrUserNotFound)
 
 		err := svc.RequestPasswordReset(ctx, "ghost@example.com")
 		require.Error(t, err)
-		assert.True(t, errors.Is(err, my_errors.ErrUserNotFound))
+		assert.True(t, errors.Is(err, apperrors.ErrUserNotFound))
 	})
 
 	t.Run("ValidateResetToken - valid", func(t *testing.T) {
@@ -541,7 +541,7 @@ func TestAuthService_PasswordReset(t *testing.T) {
 
 		userID, err := svc.ValidateResetToken(ctx, "some-token")
 		require.Error(t, err)
-		assert.True(t, errors.Is(err, my_errors.ErrTokenAlreadyUsed))
+		assert.True(t, errors.Is(err, apperrors.ErrTokenAlreadyUsed))
 		assert.Equal(t, int64(0), userID)
 	})
 

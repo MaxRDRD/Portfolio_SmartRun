@@ -3,7 +3,8 @@ package server
 import (
 	myhttp "SmartRun/internal/handler/http"
 	"SmartRun/internal/logger"
-	my_middleware "SmartRun/internal/middleware/auth"
+	appmiddleware "SmartRun/internal/middleware"
+	authmiddleware "SmartRun/internal/middleware/auth"
 	ratelimit "SmartRun/internal/middleware/ratelimit"
 	"context"
 	"net/http"
@@ -59,9 +60,10 @@ func NewServer(userHandler *myhttp.UserHandler,
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(60 * time.Second))
+	r.Use(appmiddleware.BodyLimit(1 << 20))
 
 	secret := os.Getenv("JWT_SECRET")
-	auth := my_middleware.NewAuthMiddleware(secret)
+	auth := authmiddleware.NewAuthMiddleware(secret)
 
 	// Serve existing frontend static files from ui/static.
 	staticFS := http.FileServer(http.Dir("ui/static"))

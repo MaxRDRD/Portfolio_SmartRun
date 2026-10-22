@@ -18,6 +18,7 @@ type Cache interface {
 	Del(ctx context.Context, key string) error
 	Exists(ctx context.Context, keys ...string) (int64, error)
 	SetWithJitter(ctx context.Context, key string, value interface{}, baseTTL time.Duration) error
+	Close() error
 }
 
 type redisCache struct {
@@ -128,6 +129,13 @@ func (c *redisCache) SetWithJitter(ctx context.Context, key string, value interf
 	})
 	if err != nil {
 		return fmt.Errorf("SetWithJitter: %w", err)
+	}
+	return nil
+}
+
+func (c *redisCache) Close() error {
+	if c.client != nil {
+		return c.client.Close()
 	}
 	return nil
 }

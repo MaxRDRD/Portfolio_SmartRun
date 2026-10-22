@@ -6,7 +6,7 @@ import (
 	my_http "SmartRun/internal/handler/http"
 	"SmartRun/internal/handler/http/mocks"
 	"SmartRun/internal/model"
-	"SmartRun/pkg/my_errors"
+	"SmartRun/pkg/apperrors"
 	"context"
 	"encoding/json"
 	"net/http"
@@ -52,13 +52,13 @@ func TestMetricHandler_CreateMetrics(t *testing.T) {
 			},
 		},
 		{
-			name:        "400 Bad Request on service error",
-			authUserID:  Ptr(int64(12)),
-			body:        validBody,
+			name:       "400 Bad Request on service error",
+			authUserID: Ptr(int64(12)),
+			body:       validBody,
 			mockBehavior: func(m *mocks.MetricService) {
 				m.On("CreateMetrics", mock.Anything, mock.MatchedBy(func(m model.Metrics) bool {
 					return m.UserID == 12 && m.TotalWorkouts == 5 && m.TotalDistance == 50.0
-				})).Return(nil, my_errors.ErrInvalidData).Once()
+				})).Return(nil, apperrors.ErrInvalidData).Once()
 			},
 			expectedStatus: http.StatusBadRequest,
 			checkResponse: func(t *testing.T, rec *httptest.ResponseRecorder) {
@@ -66,9 +66,9 @@ func TestMetricHandler_CreateMetrics(t *testing.T) {
 			},
 		},
 		{
-			name:        "201 Created Success",
-			authUserID:  Ptr(int64(12)),
-			body:        validBody,
+			name:       "201 Created Success",
+			authUserID: Ptr(int64(12)),
+			body:       validBody,
 			mockBehavior: func(m *mocks.MetricService) {
 				created := &model.Metrics{
 					ID:            101,
@@ -167,7 +167,7 @@ func TestMetricHandler_GetMetrics(t *testing.T) {
 			mockBehavior: func(m *mocks.MetricService) {
 				m.On("GetMetrics", mock.Anything, mock.MatchedBy(func(f dto.MetricsFilter) bool {
 					return f.UserID == 12 && f.From != nil && f.To != nil
-				})).Return(nil, my_errors.ErrMetricNotFound).Once()
+				})).Return(nil, apperrors.ErrMetricNotFound).Once()
 			},
 			expectedStatus: http.StatusNotFound,
 			checkResponse: func(t *testing.T, rec *httptest.ResponseRecorder) {
@@ -276,7 +276,7 @@ func TestMetricHandler_GetStoredMetrics(t *testing.T) {
 			authUserID: Ptr(int64(12)),
 			mockBehavior: func(m *mocks.MetricService) {
 				m.On("GetAllMetrics", mock.Anything, dto.MetricsFilter{UserID: 12}).
-					Return(nil, my_errors.ErrMetricNotFound).Once()
+					Return(nil, apperrors.ErrMetricNotFound).Once()
 			},
 			expectedStatus: http.StatusNotFound,
 			checkResponse: func(t *testing.T, rec *httptest.ResponseRecorder) {
@@ -403,14 +403,14 @@ func TestMetricHandler_UpdateMetrics(t *testing.T) {
 			},
 		},
 		{
-			name:        "404 Not Found on service error",
-			paramID:     "999",
-			authUserID:  Ptr(int64(12)),
-			body:        validBody,
+			name:       "404 Not Found on service error",
+			paramID:    "999",
+			authUserID: Ptr(int64(12)),
+			body:       validBody,
 			mockBehavior: func(m *mocks.MetricService) {
 				m.On("UpdateMetrics", mock.Anything, mock.MatchedBy(func(m model.Metrics) bool {
 					return m.ID == 999 && m.UserID == 12
-				})).Return(nil, my_errors.ErrMetricNotFound).Once()
+				})).Return(nil, apperrors.ErrMetricNotFound).Once()
 			},
 			expectedStatus: http.StatusNotFound,
 			checkResponse: func(t *testing.T, rec *httptest.ResponseRecorder) {
@@ -418,10 +418,10 @@ func TestMetricHandler_UpdateMetrics(t *testing.T) {
 			},
 		},
 		{
-			name:        "200 Success",
-			paramID:     "101",
-			authUserID:  Ptr(int64(12)),
-			body:        validBody,
+			name:       "200 Success",
+			paramID:    "101",
+			authUserID: Ptr(int64(12)),
+			body:       validBody,
 			mockBehavior: func(m *mocks.MetricService) {
 				updated := &model.Metrics{
 					ID:            101,
@@ -514,7 +514,7 @@ func TestMetricHandler_DeleteMetrics(t *testing.T) {
 			authUserID: Ptr(int64(12)),
 			mockBehavior: func(m *mocks.MetricService) {
 				m.On("DeleteMetrics", mock.Anything, int64(999), int64(12)).
-					Return(my_errors.ErrMetricNotFound).Once()
+					Return(apperrors.ErrMetricNotFound).Once()
 			},
 			expectedStatus: http.StatusNotFound,
 			checkResponse: func(t *testing.T, rec *httptest.ResponseRecorder) {
@@ -569,4 +569,3 @@ func TestToMetricsResponse_Nil(t *testing.T) {
 	res := my_http.ExportToMetricsResponse(nil)
 	assert.Equal(t, int64(0), res.ID)
 }
-

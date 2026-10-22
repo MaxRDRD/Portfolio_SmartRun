@@ -1,4 +1,4 @@
-package mycrypto
+package appcrypto
 
 import (
 	"crypto/aes"

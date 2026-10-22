@@ -2,7 +2,7 @@ package response
 
 import (
 	"SmartRun/internal/logger"
-	"SmartRun/pkg/my_errors"
+	"SmartRun/pkg/apperrors"
 
 	"encoding/json"
 	"net/http"
@@ -23,7 +23,7 @@ func SendJSON(w http.ResponseWriter, status int, resp interface{}) {
 // helper func для отправки ошибок в JSON
 func SendError(w http.ResponseWriter, r *http.Request, err error) {
 	log := logger.FromContext(r.Context())
-	status := my_errors.HTTPStatus(err)
+	status := apperrors.HTTPStatus(err)
 	var resp ErrorResponse
 	switch status {
 	case http.StatusInternalServerError: // 500
@@ -58,6 +58,12 @@ func SendError(w http.ResponseWriter, r *http.Request, err error) {
 			Error:   "bad_request",
 			Message: err.Error(),
 		}
+	case http.StatusRequestEntityTooLarge:
+		log.Warn("request entity too large", "error", err, "path", r.URL.Path)
+		resp = ErrorResponse{
+			Error:   "Request entity too large",
+			Message: err.Error(),
+		}
 	default:
 		log.Warn("client error", "status", status, "error", err, "path", r.URL.Path)
 		resp = ErrorResponse{
@@ -81,6 +87,14 @@ func SendBadRequest(w http.ResponseWriter, message string) {
 func SendUnauthorized(w http.ResponseWriter, message string) {
 	SendJSON(w, http.StatusUnauthorized, ErrorResponse{
 		Error:   "unauthorized",
+		Message: message,
+	})
+}
+
+// SendRequestEntityTooLarge отправляет 413 Request Entity Too Large в формате JSON
+func SendRequestEntityTooLarge(w http.ResponseWriter, message, details string) {
+	SendJSON(w, http.StatusRequestEntityTooLarge, ErrorResponse{
+		Error:   "request_entity_too_large",
 		Message: message,
 	})
 }

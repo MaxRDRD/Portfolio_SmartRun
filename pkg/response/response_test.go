@@ -1,7 +1,7 @@
 package response_test
 
 import (
-	"SmartRun/pkg/my_errors"
+	"SmartRun/pkg/apperrors"
 	"SmartRun/pkg/response"
 	"encoding/json"
 	"errors"
@@ -22,27 +22,32 @@ func TestHTTPStatus(t *testing.T) {
 	}{
 		{
 			name:       "not found error",
-			err:        my_errors.ErrWorkoutNotFound,
+			err:        apperrors.ErrWorkoutNotFound,
 			wantStatus: http.StatusNotFound,
 		},
 		{
 			name:       "wrapped not found error",
-			err:        fmt.Errorf("service failed: %w", my_errors.ErrDailyMetricNotFound),
+			err:        fmt.Errorf("service failed: %w", apperrors.ErrDailyMetricNotFound),
 			wantStatus: http.StatusNotFound,
 		},
 		{
 			name:       "conflict error",
-			err:        my_errors.ErrUserAlreadyExists,
+			err:        apperrors.ErrUserAlreadyExists,
 			wantStatus: http.StatusConflict,
 		},
 		{
 			name:       "unauthorized error",
-			err:        my_errors.ErrInvalidToken,
+			err:        apperrors.ErrInvalidToken,
 			wantStatus: http.StatusUnauthorized,
 		},
 		{
 			name:       "bad request error",
-			err:        my_errors.ErrInvalidData,
+			err:        apperrors.ErrInvalidData,
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "request entity too large",
+			err:        apperrors.ErrFileTypeTooLong,
 			wantStatus: http.StatusBadRequest,
 		},
 		{
@@ -54,7 +59,7 @@ func TestHTTPStatus(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := my_errors.HTTPStatus(tt.err)
+			got := apperrors.HTTPStatus(tt.err)
 			assert.Equal(t, tt.wantStatus, got)
 		})
 	}
@@ -85,7 +90,7 @@ func TestSendError_NotFound(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/api/workouts/123", nil)
 	rec := httptest.NewRecorder()
 
-	response.SendError(rec, req, my_errors.ErrWorkoutNotFound)
+	response.SendError(rec, req, apperrors.ErrWorkoutNotFound)
 
 	assert.Equal(t, http.StatusNotFound, rec.Code)
 	assert.Equal(t, "application/json", rec.Header().Get("Content-Type"))

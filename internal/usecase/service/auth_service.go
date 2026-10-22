@@ -8,7 +8,7 @@ import (
 	appLogger "SmartRun/internal/logger"
 	"SmartRun/internal/model"
 	"SmartRun/internal/repository"
-	"SmartRun/pkg/my_errors"
+	"SmartRun/pkg/apperrors"
 	"context"
 	"errors"
 	"fmt"
@@ -90,9 +90,9 @@ func (s *authService) Register(ctx context.Context, req dto.RegisterRequest) (*d
 
 		_, err := s.userRepo.GetUserByEmail(ctx, req.Email)
 		if err == nil {
-			return my_errors.ErrUserAlreadyExists
+			return apperrors.ErrUserAlreadyExists
 		}
-		if !errors.Is(err, my_errors.ErrUserNotFound) {
+		if !errors.Is(err, apperrors.ErrUserNotFound) {
 			return fmt.Errorf("Register: %w", err)
 		}
 
@@ -199,7 +199,7 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (*dto.Aut
 	user, err := s.userRepo.GetUserByEmail(ctx, req.Email)
 	if err != nil {
 		log.Warn("auth service: login lookup failed", "email", req.Email, "error", err)
-		return nil, my_errors.ErrInvalidCredentials
+		return nil, apperrors.ErrInvalidCredentials
 	}
 
 	if err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.Password)); err != nil {
@@ -209,7 +209,7 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (*dto.Aut
 			prefix = prefix[:12]
 		}
 		log.Warn("auth service: login password mismatch", "email", req.Email, "hash_prefix", prefix, "hash_len", len(user.Password), "password_len", len(req.Password), "error", err)
-		return nil, my_errors.ErrInvalidCredentials
+		return nil, apperrors.ErrInvalidCredentials
 	}
 
 	var result *dto.AuthResult
@@ -314,9 +314,9 @@ func (s *authService) UpdateUser(ctx context.Context, userID int64, req dto.Upda
 		if newEmail != oldEmail {
 			existing, getErr := s.userRepo.GetUserByEmail(ctx, newEmail)
 			if getErr == nil && existing.ID != userID {
-				return nil, my_errors.ErrUserAlreadyExists
+				return nil, apperrors.ErrUserAlreadyExists
 			}
-			if getErr != nil && !errors.Is(getErr, my_errors.ErrUserNotFound) {
+			if getErr != nil && !errors.Is(getErr, apperrors.ErrUserNotFound) {
 				return nil, getErr
 			}
 		}
@@ -389,7 +389,7 @@ func (s *authService) DeleteRefreshToken(ctx context.Context, refresh_hash strin
 
 func (s *authService) Logout(ctx context.Context, refreshToken string) error {
 	if refreshToken == "" {
-		return my_errors.ErrInvalidToken // уже разлогинены
+		return apperrors.ErrInvalidToken // уже разлогинены
 	}
 	hash := auth.HashToken(refreshToken)
 	return s.sessionRepo.DeleteSessionByHash(ctx, hash)
@@ -399,7 +399,7 @@ func (s *authService) Logout(ctx context.Context, refreshToken string) error {
 // (Выдаёт новую пару access+refresh вместо старого refresh)
 func (s *authService) Refresh(ctx context.Context, refreshToken string) (*dto.AuthResult, error) {
 	if refreshToken == "" {
-		return nil, my_errors.ErrInvalidToken
+		return nil, apperrors.ErrInvalidToken
 	}
 
 	refreshHash := auth.HashToken(refreshToken)
@@ -547,7 +547,7 @@ func (s *authService) RequestPasswordReset(ctx context.Context, email string) er
 	email = strings.ToLower(strings.TrimSpace(email))
 	user, err := s.userRepo.GetUserByEmail(ctx, email)
 	if err != nil {
-		return my_errors.ErrUserNotFound
+		return apperrors.ErrUserNotFound
 	}
 
 	token, err := auth.GenerateRefreshToken()
@@ -586,7 +586,7 @@ func (s *authService) ValidateResetToken(ctx context.Context, token string) (int
 		return 0, fmt.Errorf("ValidateResetToken: %w", err)
 	}
 	if used {
-		return 0, my_errors.ErrTokenAlreadyUsed
+		return 0, apperrors.ErrTokenAlreadyUsed
 	}
 	return userID, nil
 }

@@ -5,7 +5,7 @@ import (
 	"SmartRun/internal/dto"
 	"SmartRun/internal/logger"
 	"SmartRun/internal/usecase/service"
-	"SmartRun/pkg/my_errors"
+	"SmartRun/pkg/apperrors"
 	"SmartRun/pkg/response"
 	"context"
 	"encoding/base64"
@@ -30,7 +30,14 @@ func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
 	var req dto.RegisterRequest
 	var res *dto.AuthResult
 
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&req); err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			response.SendError(w, r, err)
+			return
+		}
 		log.Warn("register: invalid body", "error", err)
 		response.SendBadRequest(w, "invalid request body")
 		return
@@ -78,7 +85,14 @@ func (h *UserHandler) Login(w http.ResponseWriter, r *http.Request) {
 	var req dto.LoginRequest
 	var res *dto.AuthResult
 
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&req); err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			response.SendError(w, r, err)
+			return
+		}
 		log.Warn("login: invalid request", "error", err)
 		response.SendBadRequest(w, "invalid request body")
 		return
@@ -182,7 +196,15 @@ func (h *UserHandler) UpdateMe(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req dto.UpdateUserRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&req); err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			response.SendError(w, r, err)
+			return
+		}
 		log.Warn("update-me: invalid body", "error", err, "user_id", userID)
 		response.SendBadRequest(w, "invalid request body")
 		return
@@ -350,7 +372,15 @@ func (h *UserHandler) Verify2FA(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Code string `json:"code"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&req); err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			response.SendError(w, r, err)
+			return
+		}
 		log.Warn("verify2fa: invalid json", "error", err)
 		response.SendBadRequest(w, "invalid json")
 		return
@@ -410,7 +440,15 @@ func (h *UserHandler) RequestPasswordReset(w http.ResponseWriter, r *http.Reques
 	var req struct {
 		Email string `json:"email"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&req); err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			response.SendError(w, r, err)
+			return
+		}
 		log.Warn("password-reset/request: invalid json", "error", err)
 		response.SendBadRequest(w, "invalid json")
 		return
@@ -423,7 +461,7 @@ func (h *UserHandler) RequestPasswordReset(w http.ResponseWriter, r *http.Reques
 
 	err := h.service.RequestPasswordReset(r.Context(), req.Email)
 	// Важно: не выдаём факт существования email.
-	if err != nil && !errors.Is(err, my_errors.ErrUserNotFound) {
+	if err != nil && !errors.Is(err, apperrors.ErrUserNotFound) {
 		response.SendError(w, r, err)
 		return
 	}
@@ -441,7 +479,15 @@ func (h *UserHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 		Token       string `json:"token"`
 		NewPassword string `json:"new_password"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&req); err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			response.SendError(w, r, err)
+			return
+		}
 		log.Warn("password-reset/confirm: invalid json", "error", err)
 		response.SendBadRequest(w, "invalid json")
 		return

@@ -303,4 +303,3 @@ type MockEmailService struct {
 func (m *MockEmailService) SendPasswordResetEmail(ctx context.Context, to string, resetLink string, userName string) error {
 	return m.Called(ctx, to, resetLink, userName).Error(0)
 }
-

@@ -5,7 +5,7 @@ import (
 	"SmartRun/internal/logger"
 	"SmartRun/internal/model"
 	"SmartRun/internal/repository"
-	"SmartRun/pkg/my_errors"
+	"SmartRun/pkg/apperrors"
 	"context"
 	"errors"
 	"fmt"
@@ -80,7 +80,7 @@ func (s *metricService) GetMetrics(ctx context.Context, filter dto.MetricsFilter
 	log := logger.FromContext(ctx).With("user_id", filter.UserID)
 	metric, err := s.repo.GetMetricsByID(ctx, filter)
 	if err != nil {
-		if errors.Is(err, my_errors.ErrMetricNotFound) {
+		if errors.Is(err, apperrors.ErrMetricNotFound) {
 			log.Warn("metrics service: get not found")
 		} else {
 			log.Error("metrics service: get failed", "error", err)
@@ -95,7 +95,7 @@ func (s *metricService) GetAllMetrics(ctx context.Context, filter dto.MetricsFil
 	log := logger.FromContext(ctx).With("user_id", filter.UserID)
 	metric, err := s.repo.GetAllMetricsByID(ctx, filter)
 	if err != nil {
-		if errors.Is(err, my_errors.ErrMetricNotFound) {
+		if errors.Is(err, apperrors.ErrMetricNotFound) {
 			log.Warn("metrics service: get-all not found")
 		} else {
 			log.Error("metrics service: get-all failed", "error", err)

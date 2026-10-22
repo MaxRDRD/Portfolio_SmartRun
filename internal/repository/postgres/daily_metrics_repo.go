@@ -4,7 +4,7 @@ import (
 	"SmartRun/internal/logger"
 	"SmartRun/internal/model"
 	"SmartRun/internal/repository"
-	"SmartRun/pkg/my_errors"
+	"SmartRun/pkg/apperrors"
 	"context"
 	"errors"
 	"fmt"
@@ -17,6 +17,8 @@ import (
 type DailyMetricRepo struct {
 	db repository.DB
 }
+
+var _ repository.DailyMetricRepository = (*DailyMetricRepo)(nil)
 
 func NewDailyMetricRepository(db repository.DB) repository.DailyMetricRepository {
 	return &DailyMetricRepo{db: db}
@@ -49,7 +51,6 @@ func (r *DailyMetricRepo) Create(ctx context.Context, dailyMetric model.DailyMet
 		dailyMetric.ReadinessScore,
 		dailyMetric.BodyBatteryAvg,
 		dailyMetric.TotalCalories,
-		dailyMetric.TotalCalories,
 		dailyMetric.SleepScore,
 		dailyMetric.SleepHours,
 		dailyMetric.StressAvg,
@@ -63,7 +64,7 @@ func (r *DailyMetricRepo) Create(ctx context.Context, dailyMetric model.DailyMet
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 			log.Warn("daily metrics repo: create duplicate", "user_id", dailyMetric.UserID, "date", dailyMetric.Date.Format("2006-01-02"), "constraint", pgErr.ConstraintName)
-			return nil, my_errors.ErrDailyMetricAlreadyExists
+			return nil, apperrors.ErrDailyMetricAlreadyExists
 		}
 		log.Error("daily metrics repo: create failed", "user_id", dailyMetric.UserID, "date", dailyMetric.Date.Format("2006-01-02"), "error", err)
 		return nil, fmt.Errorf("Create: %w", err)
@@ -79,7 +80,7 @@ func (r *DailyMetricRepo) Update(ctx context.Context, dailyMetric model.DailyMet
 	SET date = $1, steps = $2, ctl = $3, atl = $4, tsb = $5, fatigue_score = $6,
 	readiness_score = $7, body_battery_avg = $8, total_calories = $9, sleep_score = $10,
 	sleep_hours = $11, stress_avg = $12, recommendation = $13, streak_days = $14, monotony = $15, strain = $16, updated_at = now()
-	WHERE id = $17
+	WHERE id = $17 AND user_id = $18
 	`
 
 	db := r.getDB(ctx)
@@ -101,6 +102,7 @@ func (r *DailyMetricRepo) Update(ctx context.Context, dailyMetric model.DailyMet
 		dailyMetric.Monotony,
 		dailyMetric.Strain,
 		dailyMetric.ID,
+		dailyMetric.UserID,
 	)
 	if err != nil {
 		log.Error("daily metrics repo: update failed", "id", dailyMetric.ID, "error", err)
@@ -108,7 +110,7 @@ func (r *DailyMetricRepo) Update(ctx context.Context, dailyMetric model.DailyMet
 	}
 	if tag.RowsAffected() == 0 {
 		log.Warn("daily metrics repo: update no rows affected", "id", dailyMetric.ID)
-		return nil, my_errors.ErrDailyMetricNotFound
+		return nil, apperrors.ErrDailyMetricNotFound
 	}
 	return &dailyMetric, nil
 }
@@ -120,11 +122,11 @@ func (r *DailyMetricRepo) Delete(ctx context.Context, id, userID int64) error {
 	tag, err := db.Exec(ctx, sql, id, userID)
 	if err != nil {
 		log.Error("daily metrics repo: delete failed", "id", id, "error", err)
-		return my_errors.ErrDailyMetricNotFound
+		return apperrors.ErrDailyMetricNotFound
 	}
 	if tag.RowsAffected() == 0 {
 		log.Warn("daily metrics repo: delete no rows", "id", id)
-		return my_errors.ErrDailyMetricNotFound
+		return apperrors.ErrDailyMetricNotFound
 	}
 	return nil
 }
@@ -162,7 +164,7 @@ func (r *DailyMetricRepo) GetByID(ctx context.Context, id, userID int64) (*model
 	)
 	if err != nil {
 		log.Error("daily metrics repo: get-by-id failed", "id", id, "error", err)
-		return nil, my_errors.ErrDailyMetricNotFound
+		return nil, apperrors.ErrDailyMetricNotFound
 	}
 	return &dailyMetric, nil
 }
@@ -181,7 +183,7 @@ func (r *DailyMetricRepo) GetAllByUserID(ctx context.Context, userId int64) ([]m
 	rows, err := db.Query(ctx, sql, userId)
 	if err != nil {
 		log.Error("daily metrics repo: get-all query failed", "user_id", userId, "error", err)
-		return nil, my_errors.ErrDailyMetricNotFound
+		return nil, apperrors.ErrDailyMetricNotFound
 	}
 	defer rows.Close()
 	for rows.Next() {
@@ -209,7 +211,7 @@ func (r *DailyMetricRepo) GetAllByUserID(ctx context.Context, userId int64) ([]m
 		)
 		if err != nil {
 			log.Error("daily metrics repo: get-all scan failed", "user_id", userId, "error", err)
-			return nil, my_errors.ErrDailyMetricNotFound
+			return nil, apperrors.ErrDailyMetricNotFound
 		}
 		dailyMetrics = append(dailyMetrics, dailyMetric)
 	}
@@ -266,41 +268,61 @@ func (r *DailyMetricRepo) GetByUserIDAndDate(ctx context.Context, userID int64, 
 
 // UpdateOrCreate обновляет existing daily metric или создает новый (атомарное upsert)
 func (r *DailyMetricRepo) UpdateOrCreate(ctx context.Context, dailyMetric *model.DailyMetric) error {
-	// Сначала проверяем, существует ли запись
-	existing, err := r.GetByUserIDAndDate(ctx, dailyMetric.UserID, dailyMetric.Date)
+	log := logger.FromContext(ctx)
+	sql := `
+	INSERT INTO daily_metrics (user_id, date, steps, ctl, atl, tsb, fatigue_score, readiness_score,
+    body_battery_avg, total_calories, sleep_score, sleep_hours, stress_avg, recommendation, streak_days, monotony, strain, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, now())
+ON CONFLICT (user_id, date) DO UPDATE SET
+    steps            = EXCLUDED.steps,
+    ctl              = EXCLUDED.ctl,
+    atl              = EXCLUDED.atl,
+    tsb              = EXCLUDED.tsb,
+    fatigue_score    = EXCLUDED.fatigue_score,
+    readiness_score  = EXCLUDED.readiness_score,
+    body_battery_avg = COALESCE(NULLIF(EXCLUDED.body_battery_avg, 0), daily_metrics.body_battery_avg),
+    total_calories   = EXCLUDED.total_calories,
+    sleep_score      = COALESCE(NULLIF(EXCLUDED.sleep_score, 0), daily_metrics.sleep_score),
+    sleep_hours      = COALESCE(NULLIF(EXCLUDED.sleep_hours, 0), daily_metrics.sleep_hours),
+    stress_avg       = COALESCE(NULLIF(EXCLUDED.stress_avg, 0), daily_metrics.stress_avg),
+    recommendation   = COALESCE(NULLIF(EXCLUDED.recommendation, ''), daily_metrics.recommendation),
+    streak_days      = EXCLUDED.streak_days,
+    monotony         = EXCLUDED.monotony,
+    strain           = EXCLUDED.strain,
+    updated_at       = now()
+RETURNING id;
+	`
+
+	db := r.getDB(ctx)
+	err := db.QueryRow(ctx, sql,
+		dailyMetric.UserID,
+		dailyMetric.Date,
+		dailyMetric.Steps,
+		dailyMetric.CTL,
+		dailyMetric.ATL,
+		dailyMetric.TSB,
+		dailyMetric.FatigueScore,
+		dailyMetric.ReadinessScore,
+		dailyMetric.BodyBatteryAvg,
+		dailyMetric.TotalCalories,
+		dailyMetric.SleepScore,
+		dailyMetric.SleepHours,
+		dailyMetric.StressAvg,
+		dailyMetric.Recommendation,
+		dailyMetric.StreakDays,
+		dailyMetric.Monotony,
+		dailyMetric.Strain,
+	).Scan(&dailyMetric.ID)
+
 	if err != nil {
-		return fmt.Errorf("UpdateOrCreate: %w", err)
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			log.Warn("daily metrics repo: create duplicate", "user_id", dailyMetric.UserID, "date", dailyMetric.Date.Format("2006-01-02"), "constraint", pgErr.ConstraintName)
+			return apperrors.ErrDailyMetricAlreadyExists
+		}
+		log.Error("daily metrics repo: create failed", "user_id", dailyMetric.UserID, "date", dailyMetric.Date.Format("2006-01-02"), "error", err)
+		return fmt.Errorf("Create: %w", err)
 	}
 
-	if existing != nil {
-		// Обновляем существующую запись (сохраняем пользовательский ввод, обновляем расчёты)
-		dailyMetric.ID = existing.ID
-
-		// Сохраняем пользовательский ввод если его нет в новой метрике
-		if dailyMetric.SleepScore == 0 && existing.SleepScore > 0 {
-			dailyMetric.SleepScore = existing.SleepScore
-		}
-		if dailyMetric.SleepHours == 0 && existing.SleepHours > 0 {
-			dailyMetric.SleepHours = existing.SleepHours
-		}
-		if dailyMetric.StressAvg == 0 && existing.StressAvg > 0 {
-			dailyMetric.StressAvg = existing.StressAvg
-		}
-		if dailyMetric.BodyBatteryAvg == 0 && existing.BodyBatteryAvg > 0 {
-			dailyMetric.BodyBatteryAvg = existing.BodyBatteryAvg
-		}
-
-		_, err := r.Update(ctx, *dailyMetric)
-		if err != nil {
-			return fmt.Errorf("UpdateOrCreate: %w", err)
-		}
-		return nil
-	}
-
-	// Создаём новую запись
-	_, err = r.Create(ctx, *dailyMetric)
-	if err != nil {
-		return fmt.Errorf("UpdateOrCreate: %w", err)
-	}
 	return nil
 }

@@ -12,10 +12,10 @@ import (
 	"SmartRun/internal/dto"
 	"SmartRun/internal/model"
 	"SmartRun/internal/repository"
-	repopostgres "SmartRun/internal/repository_impl/postgres"
-	"SmartRun/internal/repository_impl/postgres/testutil"
-	workoutpostgres "SmartRun/internal/repository_impl/postgres/workout"
-	"SmartRun/pkg/my_errors"
+	"SmartRun/internal/repository/postgres"
+	"SmartRun/internal/repository/postgres/testutil"
+	workpostgr "SmartRun/internal/repository/postgres/workout"
+	"SmartRun/pkg/apperrors"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -39,8 +39,8 @@ func TestMain(m *testing.M) {
 		log.Fatalf("failed to setup test postgres container: %v", err)
 	}
 
-	workoutRepo = workoutpostgres.NewWorkoutRepository(testDB.Pool)
-	txManager = repopostgres.NewTxManager(testDB.Pool)
+	workoutRepo = workpostgr.NewWorkoutRepository(testDB.Pool)
+	txManager = postgres.NewTxManager(testDB.Pool)
 
 	code := m.Run()
 
@@ -266,10 +266,10 @@ func TestWorkoutRepository_GetByID(t *testing.T) {
 			workoutID:   888888,
 			userID:      user1ID,
 			wantErr:     true,
-			expectedErr: my_errors.ErrWorkoutNotFound,
+			expectedErr: apperrors.ErrWorkoutNotFound,
 			checkResponse: func(t *testing.T, w *model.Workouts, err error) {
 				assert.Nil(t, w)
-				assert.True(t, errors.Is(err, my_errors.ErrWorkoutNotFound))
+				assert.True(t, errors.Is(err, apperrors.ErrWorkoutNotFound))
 			},
 		},
 		{
@@ -277,10 +277,10 @@ func TestWorkoutRepository_GetByID(t *testing.T) {
 			workoutID:   w1.ID,
 			userID:      user2ID, // Wrong user
 			wantErr:     true,
-			expectedErr: my_errors.ErrWorkoutNotFound,
+			expectedErr: apperrors.ErrWorkoutNotFound,
 			checkResponse: func(t *testing.T, w *model.Workouts, err error) {
 				assert.Nil(t, w)
-				assert.True(t, errors.Is(err, my_errors.ErrWorkoutNotFound))
+				assert.True(t, errors.Is(err, apperrors.ErrWorkoutNotFound))
 			},
 		},
 	}
@@ -373,9 +373,9 @@ func TestWorkoutRepository_Update(t *testing.T) {
 				}
 			},
 			wantErr:     true,
-			expectedErr: my_errors.ErrWorkoutNotFound,
+			expectedErr: apperrors.ErrWorkoutNotFound,
 			checkResponse: func(t *testing.T, err error) {
-				assert.True(t, errors.Is(err, my_errors.ErrWorkoutNotFound))
+				assert.True(t, errors.Is(err, apperrors.ErrWorkoutNotFound))
 			},
 		},
 		{
@@ -387,9 +387,9 @@ func TestWorkoutRepository_Update(t *testing.T) {
 				return &wrongUserWorkout
 			},
 			wantErr:     true,
-			expectedErr: my_errors.ErrWorkoutNotFound,
+			expectedErr: apperrors.ErrWorkoutNotFound,
 			checkResponse: func(t *testing.T, err error) {
-				assert.True(t, errors.Is(err, my_errors.ErrWorkoutNotFound))
+				assert.True(t, errors.Is(err, apperrors.ErrWorkoutNotFound))
 				// Verify original workout remains unchanged
 				saved, getErr := workoutRepo.GetByID(ctx, w.ID, user1ID)
 				require.NoError(t, getErr)
@@ -447,9 +447,9 @@ func TestWorkoutRepository_Delete(t *testing.T) {
 			workoutID:   w.ID,
 			userID:      user2ID, // Wrong user
 			wantErr:     true,
-			expectedErr: my_errors.ErrWorkoutNotFound,
+			expectedErr: apperrors.ErrWorkoutNotFound,
 			checkResponse: func(t *testing.T, err error) {
-				assert.True(t, errors.Is(err, my_errors.ErrWorkoutNotFound))
+				assert.True(t, errors.Is(err, apperrors.ErrWorkoutNotFound))
 				// Verify workout still exists
 				saved, getErr := workoutRepo.GetByID(ctx, w.ID, user1ID)
 				require.NoError(t, getErr)
@@ -461,9 +461,9 @@ func TestWorkoutRepository_Delete(t *testing.T) {
 			workoutID:   999999,
 			userID:      user1ID,
 			wantErr:     true,
-			expectedErr: my_errors.ErrWorkoutNotFound,
+			expectedErr: apperrors.ErrWorkoutNotFound,
 			checkResponse: func(t *testing.T, err error) {
-				assert.True(t, errors.Is(err, my_errors.ErrWorkoutNotFound))
+				assert.True(t, errors.Is(err, apperrors.ErrWorkoutNotFound))
 			},
 		},
 		{
@@ -476,7 +476,7 @@ func TestWorkoutRepository_Delete(t *testing.T) {
 				require.NoError(t, err)
 				// Verify workout is gone
 				_, getErr := workoutRepo.GetByID(ctx, w.ID, user1ID)
-				assert.True(t, errors.Is(getErr, my_errors.ErrWorkoutNotFound))
+				assert.True(t, errors.Is(getErr, apperrors.ErrWorkoutNotFound))
 			},
 		},
 	}
@@ -958,10 +958,10 @@ func TestWorkoutRepository_CascadeDelete(t *testing.T) {
 
 	// Verify GetByID returns ErrWorkoutNotFound for both deleted workouts
 	_, err1 := workoutRepo.GetByID(ctx, w1.ID, userID)
-	assert.True(t, errors.Is(err1, my_errors.ErrWorkoutNotFound))
+	assert.True(t, errors.Is(err1, apperrors.ErrWorkoutNotFound))
 
 	_, err2 := workoutRepo.GetByID(ctx, w2.ID, userID)
-	assert.True(t, errors.Is(err2, my_errors.ErrWorkoutNotFound))
+	assert.True(t, errors.Is(err2, apperrors.ErrWorkoutNotFound))
 }
 
 // -----------------------------------------------------------------------------
@@ -1031,6 +1031,6 @@ func TestWorkoutRepository_Transactions(t *testing.T) {
 		// Workout must NOT exist in DB because transaction was rolled back
 		saved, getErr := workoutRepo.GetByID(ctx, workoutID, userID)
 		assert.Nil(t, saved)
-		assert.True(t, errors.Is(getErr, my_errors.ErrWorkoutNotFound))
+		assert.True(t, errors.Is(getErr, apperrors.ErrWorkoutNotFound))
 	})
 }
