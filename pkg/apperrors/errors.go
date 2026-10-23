@@ -42,6 +42,12 @@ var (
 	ErrDailyMetricNotFound      = errors.New("daily metric not found")
 	ErrDailyMetricAlreadyExists = errors.New("daily metric already exists")
 
+	// passkeys
+	ErrPasskeyNotFound       = errors.New("passkey not found")
+	ErrPasskeyAlreadyExists  = errors.New("passkey already exists")
+	ErrPasskeySessionExpired = errors.New("passkey session expired or invalid")
+	ErrPasskeyVerification   = errors.New("passkey verification failed")
+
 	// Ошибки валидации входных данных (400 Bad Request)
 	ErrFileTypeTooLong = errors.New("file_type exceeds maximum length of 100 characters")
 	ErrInvalidFileSize = errors.New("file size cannot be negative")
@@ -49,21 +55,21 @@ var (
 
 func HTTPStatus(err error) int {
 	//404
-	NotFound := []error{ErrUserNotFound, ErrWorkoutNotFound, ErrDailyMetricNotFound, ErrMetricNotFound, ErrSecretNotFound, ErrPasswordResetHashNotFound}
+	NotFound := []error{ErrUserNotFound, ErrWorkoutNotFound, ErrDailyMetricNotFound, ErrMetricNotFound, ErrSecretNotFound, ErrPasswordResetHashNotFound, ErrPasskeyNotFound}
 	for _, target := range NotFound {
 		if errors.Is(err, target) {
 			return 404
 		}
 	}
 	//409
-	Conflict := []error{ErrUserAlreadyExists, ErrWorkoutAlreadyExists, ErrDailyMetricAlreadyExists}
+	Conflict := []error{ErrUserAlreadyExists, ErrWorkoutAlreadyExists, ErrDailyMetricAlreadyExists, ErrPasskeyAlreadyExists}
 	for _, target := range Conflict {
 		if errors.Is(err, target) {
 			return 409
 		}
 	}
 	//401
-	Unauthorized := []error{ErrInvalidToken, ErrTokenNotFound, ErrTokenAlreadyUsed, ErrInvalidCredentials}
+	Unauthorized := []error{ErrInvalidToken, ErrTokenNotFound, ErrTokenAlreadyUsed, ErrInvalidCredentials, ErrPasskeySessionExpired, ErrPasskeyVerification}
 	for _, target := range Unauthorized {
 		if errors.Is(err, target) {
 			return 401
