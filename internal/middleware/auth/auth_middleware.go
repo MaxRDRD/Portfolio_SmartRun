@@ -1,4 +1,4 @@
-package my_middleware
+package authmiddleware
 
 import (
 	"SmartRun/internal/auth"

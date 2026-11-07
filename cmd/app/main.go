@@ -27,6 +27,7 @@ import (
 
 	"github.com/go-co-op/gocron/v2"
 	"github.com/go-playground/validator"
+	"github.com/go-webauthn/webauthn/webauthn"
 )
 
 func main() {
@@ -40,8 +41,8 @@ func main() {
 }
 
 func run(ctx context.Context, log *slog.Logger) error {
-	conn_string := os.Getenv("CONN_STRING")
-	pool, err := db.NewPool(ctx, conn_string)
+	connString := os.Getenv("CONN_STRING")
+	pool, err := db.NewPool(ctx, connString)
 	if err != nil {
 		log.Error("failed to create database pool", "error", err,
 			"stack", string(debug.Stack()))
@@ -59,7 +60,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 		}
 	}
 	defer func() {
-		if err := cacheStore.Close(); err != nil {
+		if err = cacheStore.Close(); err != nil {
 			log.Warn("cache close error", "error", err)
 		}
 	}()
@@ -89,12 +90,14 @@ func run(ctx context.Context, log *slog.Logger) error {
 	if rabbitURL == "" {
 		rabbitURL = "amqp://smartrun:smartrun@localhost:5672/"
 	}
-	publisher, err := rabbitmq.NewRabbitMQPublisher(rabbitURL)
+	publisher, err := rabbitmq.NewPublisher(rabbitURL)
 	if err != nil {
 		log.Error("failed to initialize rabbitmq publisher", "error", err, "stack", string(debug.Stack()))
 		return err
 	}
 	defer publisher.Close()
+
+	passkeyRepo := postgres.NewPasskeyRepository(pool)
 
 	userService := service.NewUserService(userRepo, sessionRepo, totpRepo, passwResetRepo, emailService, cfg, txManager, validator, publisher)
 	userHandler := myhttp.NewUserHandler(userService)
@@ -108,6 +111,28 @@ func run(ctx context.Context, log *slog.Logger) error {
 	dailyMetricsService := service.NewDailyMetricService(dailyMetricsRepo, workoutRepo, validator, txManager, publisher)
 	dailyMetricsHandler := myhttp.NewDailyMetricHandler(dailyMetricsService)
 
+	// Конфигурация FIDO2 / WebAuthn (Passkeys)
+	rpID := os.Getenv("WEBAUTHN_RP_ID")
+	if rpID == "" {
+		rpID = "localhost"
+	}
+	rpOrigin := os.Getenv("WEBAUTHN_RP_ORIGIN")
+	if rpOrigin == "" {
+		rpOrigin = cfg.PublicURL // По умолчанию http://localhost:3000
+	}
+	webAuthn, err := webauthn.New(&webauthn.Config{
+		RPDisplayName: "SmartRun",
+		RPID:          rpID,
+		RPOrigins:     []string{rpOrigin, "http://localhost:8080"}, // Разрешаем фронтенд и прямой порт бэкенда
+	})
+	if err != nil {
+		log.Error("failed to initialize webauthn", "error", err, "stack", string(debug.Stack()))
+		return err
+	}
+
+	passkeyService := service.NewPasskeyService(userRepo, passkeyRepo, sessionRepo, totpRepo, txManager, cacheStore, webAuthn, cfg)
+	passkeyHandler := myhttp.NewPasskeyHandler(passkeyService)
+
 	workerPool, err := worker.NewWorkerPool(rabbitURL)
 	if err != nil {
 		log.Error("failed to initialize worker pool", "error", err, "stack", string(debug.Stack()))
@@ -116,13 +141,13 @@ func run(ctx context.Context, log *slog.Logger) error {
 	defer workerPool.Close()
 
 	metricsWorker := worker.NewMetricsWorker(workoutService)
-	if err := workerPool.StartConsumer(rabbitmq.MetricsQueue, metricsWorker); err != nil {
+	if err = workerPool.StartConsumer(rabbitmq.MetricsQueue, metricsWorker); err != nil {
 		log.Error("failed to start metrics worker", "error", err)
 		return err
 	}
 
 	emailWorker := worker.NewEmailWorker(emailService)
-	if err := workerPool.StartConsumer(rabbitmq.PasswordResetQueue, emailWorker); err != nil {
+	if err = workerPool.StartConsumer(rabbitmq.PasswordResetQueue, emailWorker); err != nil {
 		log.Error("failed to start email worker", "error", err)
 		return err
 	}
@@ -132,7 +157,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 		log.Warn("failed to initialize AI coach, advice generation will be disabled", "error", err)
 	} else {
 		aiCoachWorker := worker.NewAICoachWorker(aiCoach, dailyMetricsService, workoutService)
-		if err := workerPool.StartConsumer(rabbitmq.AICoachQueue, aiCoachWorker); err != nil {
+		if err = workerPool.StartConsumer(rabbitmq.AICoachQueue, aiCoachWorker); err != nil {
 			log.Error("failed to start ai coach worker", "error", err)
 		}
 	}
@@ -147,16 +172,21 @@ func run(ctx context.Context, log *slog.Logger) error {
 			"stack", string(debug.Stack()))
 		return err
 	}
-	s.NewJob(
+	job, err := s.NewJob(
 		gocron.DailyJob(1, gocron.NewAtTimes(gocron.NewAtTime(3, 0, 0))), // Каждый день в 3:00
 		gocron.NewTask(func() {
-			err := sessionRepo.CleanupExpiredSessions(context.Background())
+			err = sessionRepo.CleanupExpiredSessions(context.Background())
 			if err != nil {
 				log.Error("cleanup error:", "error", err,
 					"stack", string(debug.Stack()))
 			}
 		}),
 	)
+	if err != nil {
+		log.Error("error created tasks: %v", "error", err)
+		return err
+	}
+	log.Info("tasks succefully created with ID: %s", "signal", job.ID().String())
 	s.Start()
 
 	defer func() {
@@ -173,6 +203,7 @@ func run(ctx context.Context, log *slog.Logger) error {
 		workoutHandler,
 		metricsHandler,
 		dailyMetricsHandler,
+		passkeyHandler,
 		ctx)
 	// Оборачиваем в middleware, чтобы в каждом запросе был логгер с request_id и т.д.
 	loggedHandler := middleware.LogMiddleware(log)(handler)
@@ -216,9 +247,8 @@ func run(ctx context.Context, log *slog.Logger) error {
 		log.Error("HTTP server shutdown error", "error", err,
 			"stack", string(debug.Stack()))
 		return err
-	} else {
-		log.Info("HTTP server shutdown successfully")
 	}
+	log.Info("HTTP server shutdown successfully")
 
 	log.Info("application stopped")
 	return nil

@@ -16,14 +16,14 @@ import (
 	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
 )
 
-// PostgresTestDB хранит инстанс контейнера и пул соединений для тестов
+// PostgresTestDB хранит инстанс контейнера и пул соединений для тестов.
 type PostgresTestDB struct {
 	Container  *tcpostgres.PostgresContainer
 	Pool       *pgxpool.Pool
 	ConnString string
 }
 
-// SetupTestPostgres запускает контейнер с PostgreSQL 16+, применяет миграции и возвращает PostgresTestDB
+// SetupTestPostgres запускает контейнер с PostgreSQL 16+, применяет миграции и возвращает PostgresTestDB.
 func SetupTestPostgres(ctx context.Context) (*PostgresTestDB, error) {
 	if os.Getenv("TESTCONTAINERS_RYUK_DISABLED") == "" {
 		_ = os.Setenv("TESTCONTAINERS_RYUK_DISABLED", "true")
@@ -84,7 +84,7 @@ func SetupTestPostgres(ctx context.Context) (*PostgresTestDB, error) {
 	}, nil
 }
 
-// Close завершает соединения пула и останавливает контейнер
+// Close завершает соединения пула и останавливает контейнер.
 func (db *PostgresTestDB) Close(ctx context.Context) error {
 	if db.Pool != nil {
 		db.Pool.Close()
@@ -95,7 +95,7 @@ func (db *PostgresTestDB) Close(ctx context.Context) error {
 	return nil
 }
 
-// TruncateTables очищает таблицы базы данных между тестами
+// TruncateTables очищает таблицы базы данных между тестами.
 func (db *PostgresTestDB) TruncateTables(ctx context.Context) error {
 	queries := []string{
 		"TRUNCATE TABLE daily_metrics, metrics, password_resets, sessions, user_goals, workouts, users RESTART IDENTITY CASCADE;",
@@ -109,7 +109,7 @@ func (db *PostgresTestDB) TruncateTables(ctx context.Context) error {
 	return nil
 }
 
-// CreateUser создает тестового пользователя и возвращает его ID
+// CreateUser создает тестового пользователя и возвращает его ID.
 func (db *PostgresTestDB) CreateUser(ctx context.Context, name, email string) (int64, error) {
 	var id int64
 	query := `
@@ -124,7 +124,7 @@ func (db *PostgresTestDB) CreateUser(ctx context.Context, name, email string) (i
 	return id, nil
 }
 
-// runMigrations применяет все миграции из каталога migrations/ с помощью golang-migrate
+// runMigrations применяет все миграции из каталога migrations/ с помощью golang-migrate.
 func runMigrations(connStr string) error {
 	projectRoot, err := findProjectRoot()
 	if err != nil {
@@ -150,7 +150,7 @@ func runMigrations(connStr string) error {
 	return nil
 }
 
-// findProjectRoot ищет корень проекта по наличию go.mod
+// findProjectRoot ищет корень проекта по наличию go.mod.
 func findProjectRoot() (string, error) {
 	dir, err := os.Getwd()
 	if err != nil {

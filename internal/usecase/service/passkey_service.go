@@ -1,7 +1,7 @@
 package service
 
 import (
-	"SmartRun/internal/adapter/webauthn"
+	adapter "SmartRun/internal/adapter/webauthn"
 	"SmartRun/internal/auth"
 	"SmartRun/internal/cache"
 	"SmartRun/internal/config"
@@ -147,13 +147,13 @@ func (s *passkeyService) FinishRegistration(ctx context.Context, userID int64, b
 	parsedResponse, err := protocol.ParseCredentialCreationResponseBody(body)
 	if err != nil {
 		log.Warn("passkey service: failed to parse credential creation response", "user_id", userID, "error", err)
-		return nil, fmt.Errorf("%w: %v", apperrors.ErrInvalidData, err)
+		return nil, fmt.Errorf("%w: %w", apperrors.ErrInvalidData, err)
 	}
 
 	cred, err := s.webAuthn.CreateCredential(webAuthnUser, sessionData, parsedResponse)
 	if err != nil {
 		log.Warn("passkey service: failed to verify credential creation", "user_id", userID, "error", err)
-		return nil, fmt.Errorf("%w: %v", apperrors.ErrPasskeyVerification, err)
+		return nil, fmt.Errorf("%w: %w", apperrors.ErrPasskeyVerification, err)
 	}
 
 	transports := make([]string, 0, len(cred.Transport))
@@ -262,7 +262,7 @@ func (s *passkeyService) FinishLogin(ctx context.Context, sessionID string, body
 	parsedAssertion, err := protocol.ParseCredentialRequestResponseBody(body)
 	if err != nil {
 		log.Warn("passkey service: failed to parse credential request response", "error", err)
-		return nil, fmt.Errorf("%w: %v", apperrors.ErrInvalidData, err)
+		return nil, fmt.Errorf("%w: %w", apperrors.ErrInvalidData, err)
 	}
 
 	var cred *webauthnpkg.Credential
@@ -290,7 +290,7 @@ func (s *passkeyService) FinishLogin(ctx context.Context, sessionID string, body
 		authedUser, validatedCred, valErr := s.webAuthn.ValidatePasskeyLogin(handler, sessionData, parsedAssertion)
 		if valErr != nil {
 			log.Warn("passkey service: discoverable login validation failed", "error", valErr)
-			return nil, fmt.Errorf("%w: %v", apperrors.ErrPasskeyVerification, valErr)
+			return nil, fmt.Errorf("%w: %w", apperrors.ErrPasskeyVerification, valErr)
 		}
 
 		cred = validatedCred
@@ -327,7 +327,7 @@ func (s *passkeyService) FinishLogin(ctx context.Context, sessionID string, body
 		cred, err = s.webAuthn.ValidateLogin(webAuthnUser, sessionData, parsedAssertion)
 		if err != nil {
 			log.Warn("passkey service: login validation failed", "user_id", user.ID, "error", err)
-			return nil, fmt.Errorf("%w: %v", apperrors.ErrPasskeyVerification, err)
+			return nil, fmt.Errorf("%w: %w", apperrors.ErrPasskeyVerification, err)
 		}
 	}
 

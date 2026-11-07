@@ -1,0 +1,62 @@
+run:
+  timeout: 5m
+  tests: true
+
+linters:
+  disable-all: true
+  enable:
+    # 1. Базовые проверки Go и поиск скрытых багов
+    - govet        # Проверка копирования мьютексов, printf, потерянных контекстов
+    - unused       # Поиск неиспользуемого кода (переменные, поля структур)
+    - ineffassign  # Переменная перезаписывается без использования
+    
+    # 2. Обработка ошибок (критично для надежности)
+    - errcheck     # Запрещает игнорировать возвращаемые ошибки
+    - errorlint    # Проверяет работу с ошибками (errors.Is, errors.As)
+
+    # 3. Безопасность и утечки ресурсов
+    - gosec        # Поиск уязвимостей (SQL-инъекции, небезопасные файлы)
+    - bodyclose    # Гарантирует defer resp.Body.Close()
+
+    # 4. Стиль и чистота
+    - revive       # Проверка идиом Go (возврат ошибок, if-return)
+    - misspell     # Поиск опечаток в английских словах
+
+linters-settings:
+  govet:
+    enable-all: false
+    # Включаем только реальные проверки багов, отключаем шумный shadow
+    enable:
+      - copylocks
+      - lostcancel
+      - nilfunc
+      - printf
+      - unmarshal
+      - unreachable
+      - unusedresult
+
+  revive:
+    rules:
+      - name: error-return
+        severity: warning
+      - name: indent-error-flow
+        severity: warning
+
+  errorlint:
+    errorf: true
+    asserts: true
+    comparison: true
+
+  gosec:
+    excludes:
+      - G104 # Дублирует errcheck
+      - G115 # Предупреждения о преобразовании int
+      - G404 # Использование math/rand для jitter в кэше безопасно и не требует crypto/rand
+
+issues:
+  max-same-issues: 5
+  exclude-rules:
+    - path: _test\.go
+      linters:
+        - errcheck
+        - gosec

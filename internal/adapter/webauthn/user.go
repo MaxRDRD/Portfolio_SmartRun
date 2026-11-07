@@ -13,7 +13,7 @@ type WebAuthnUserAdapter struct {
 	Passkeys []model.Passkey
 }
 
-// NewWebAuthnUser оборачивает доменную модель в адаптер
+// NewWebAuthnUser оборачивает доменную модель в адаптер.
 func NewWebAuthnUser(user *model.User, passkeys []model.Passkey) *WebAuthnUserAdapter {
 	return &WebAuthnUserAdapter{
 		User:     user,
@@ -21,19 +21,19 @@ func NewWebAuthnUser(user *model.User, passkeys []model.Passkey) *WebAuthnUserAd
 	}
 }
 
-// 1. WebAuthnID: уникальный неизменяемый байтовый идентификатор (User Handle)
+// 1. WebAuthnID: уникальный неизменяемый байтовый идентификатор (User Handle).
 func (u *WebAuthnUserAdapter) WebAuthnID() []byte {
 	buf := make([]byte, 8)
 	binary.BigEndian.PutUint64(buf, uint64(u.User.ID))
 	return buf
 }
 
-// 2. WebAuthnName: логин (Email)
+// 2. WebAuthnName: логин (Email).
 func (u *WebAuthnUserAdapter) WebAuthnName() string {
 	return u.User.Email
 }
 
-// 3. WebAuthnDisplayName: отображаемое имя (Имя атлета)
+// 3. WebAuthnDisplayName: отображаемое имя (Имя атлета).
 func (u *WebAuthnUserAdapter) WebAuthnDisplayName() string {
 	if u.User.Name != "" {
 		return u.User.Name
@@ -41,11 +41,11 @@ func (u *WebAuthnUserAdapter) WebAuthnDisplayName() string {
 	return u.User.Email
 }
 
-// 4. WebAuthnCredentials: список зарегистрированных открытых ключей пользователя
+// 4. WebAuthnCredentials: список зарегистрированных открытых ключей пользователя.
 func (u *WebAuthnUserAdapter) WebAuthnCredentials() []webauthn.Credential {
 	creds := make([]webauthn.Credential, 0, len(u.Passkeys))
 	for _, pk := range u.Passkeys {
-		// Конвертируем строки транспортов в protocol.AuthenticatorTransport
+		// Конвертируем строки транспортов в protocol.AuthenticatorTransport.
 		transports := make([]protocol.AuthenticatorTransport, 0, len(pk.Transports))
 		for _, t := range pk.Transports {
 			transports = append(transports, protocol.AuthenticatorTransport(t))

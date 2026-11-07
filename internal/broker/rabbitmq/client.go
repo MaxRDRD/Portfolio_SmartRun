@@ -17,13 +17,13 @@ const (
 )
 
 // RabbitMQPublisher структура для публикации сообщений в RabbitMQ
-type RabbitMQPublisher struct {
+type Publisher struct {
 	conn *amqp.Connection
 	ch   *amqp.Channel
 }
 
 // NewRabbitMQPublisher создает нового издателя RabbitMQ и объявляет необходимые очереди
-func NewRabbitMQPublisher(url string) (*RabbitMQPublisher, error) {
+func NewPublisher(url string) (*Publisher, error) {
 	conn, err := amqp.Dial(url)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to RabbitMQ: %w", err)
@@ -71,14 +71,14 @@ func NewRabbitMQPublisher(url string) (*RabbitMQPublisher, error) {
 		return nil, fmt.Errorf("failed to declare queue %s: %w", AICoachQueue, err)
 	}
 
-	return &RabbitMQPublisher{
+	return &Publisher{
 		conn: conn,
 		ch:   ch,
 	}, nil
 }
 
 // Close закрывает канал и соединение с RabbitMQ
-func (p *RabbitMQPublisher) Close() error {
+func (p *Publisher) Close() error {
 	if p.ch != nil {
 		_ = p.ch.Close()
 	}
@@ -89,7 +89,7 @@ func (p *RabbitMQPublisher) Close() error {
 }
 
 // publish отправляет сообщение в указанную очередь
-func (p *RabbitMQPublisher) publish(ctx context.Context, queueName string, body []byte) error {
+func (p *Publisher) publish(ctx context.Context, queueName string, body []byte) error {
 	return p.ch.PublishWithContext(
 		ctx,
 		"",        // exchange
@@ -105,7 +105,7 @@ func (p *RabbitMQPublisher) publish(ctx context.Context, queueName string, body 
 }
 
 // PublishMetricsRecalculation публикует событие перерасчета метрик
-func (p *RabbitMQPublisher) PublishMetricsRecalculation(ctx context.Context, event broker.MetricsRecalculationEvent) error {
+func (p *Publisher) PublishMetricsRecalculation(ctx context.Context, event broker.MetricsRecalculationEvent) error {
 	b, err := json.Marshal(event)
 	if err != nil {
 		return fmt.Errorf("PublishMetricsRecalculation: %w", err)
@@ -115,7 +115,7 @@ func (p *RabbitMQPublisher) PublishMetricsRecalculation(ctx context.Context, eve
 }
 
 // PublishPasswordReset публикует событие сброса пароля
-func (p *RabbitMQPublisher) PublishPasswordReset(ctx context.Context, event broker.PasswordResetEvent) error {
+func (p *Publisher) PublishPasswordReset(ctx context.Context, event broker.PasswordResetEvent) error {
 	b, err := json.Marshal(event)
 	if err != nil {
 		return fmt.Errorf("PublishPasswordReset: %w", err)
@@ -125,7 +125,7 @@ func (p *RabbitMQPublisher) PublishPasswordReset(ctx context.Context, event brok
 }
 
 // PublishAICoachEvent публикует событие для генерации советов ИИ-тренера
-func (p *RabbitMQPublisher) PublishAICoachEvent(ctx context.Context, event broker.MetricsRecalculationEvent) error {
+func (p *Publisher) PublishAICoachEvent(ctx context.Context, event broker.MetricsRecalculationEvent) error {
 	b, err := json.Marshal(event)
 	if err != nil {
 		return fmt.Errorf("PublishAICoachEvent: %w", err)

@@ -50,7 +50,7 @@ func (h *WorkoutHandler) Create(w http.ResponseWriter, r *http.Request) {
 		var req dto.CreateRequest
 		dec := json.NewDecoder(r.Body)
 		dec.DisallowUnknownFields()
-		if err := dec.Decode(&req); err != nil {
+		if err = dec.Decode(&req); err != nil {
 			var maxBytesErr *http.MaxBytesError
 			if errors.As(err, &maxBytesErr) {
 				response.SendError(w, r, err)

@@ -51,6 +51,7 @@ func NewServer(userHandler *myhttp.UserHandler,
 	workoutHandler *myhttp.WorkoutHandler,
 	metricsHandler *myhttp.MetricHandler,
 	dailyMetricsHandler *myhttp.DailyMetricHandler,
+	passkeyHandler *myhttp.PasskeyHandler,
 	ctx context.Context) http.Handler {
 	log := logger.FromContext(ctx)
 	r := chi.NewRouter()
@@ -89,7 +90,8 @@ func NewServer(userHandler *myhttp.UserHandler,
 		r.With(authLimiter).Post("/refresh", http.HandlerFunc(userHandler.Refresh).ServeHTTP)
 		r.With(authLimiter).Post("/password/reset/request", userHandler.RequestPasswordReset)
 		r.With(authLimiter).Post("/password/reset/confirm", userHandler.ResetPassword)
-
+		r.With(authLimiter).Post("/auth/passkeys/login/begin", passkeyHandler.BeginLogin)
+		r.With(authLimiter).Post("/auth/passkeys/login/finish", passkeyHandler.FinishLogin)
 		// Verify2FA НЕ требует JWT - она используется в ПРОЦЕССЕ аутентификации
 		r.Post("/verify-2fa", userHandler.Verify2FA)
 
@@ -121,6 +123,11 @@ func NewServer(userHandler *myhttp.UserHandler,
 			r.With(userLimiter).Get("/daily-metrics/{id}", dailyMetricsHandler.GetDailyMetricByID)
 			r.With(userLimiter).Delete("/daily-metrics/{id}", dailyMetricsHandler.DeleteDailyMetric)
 			r.With(userLimiter).Post("/daily-metrics/generate-advice", dailyMetricsHandler.GenerateAdvice)
+
+			r.With(userLimiter).Post("/auth/passkeys/register/begin", passkeyHandler.BeginRegistration)
+			r.With(userLimiter).Post("/auth/passkeys/register/finish", passkeyHandler.FinishRegistration)
+			r.With(userLimiter).Get("/auth/passkeys", passkeyHandler.GetUserPasskeys)
+			r.With(userLimiter).Delete("/auth/passkeys/{id}", passkeyHandler.DeletePasskey)
 		})
 	})
 

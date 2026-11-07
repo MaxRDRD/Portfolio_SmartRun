@@ -183,7 +183,7 @@ func (s *workoutService) Delete(ctx context.Context, id, userID int64) error {
 
 	err = s.txManager.WithTransaction(ctx, func(txCtx context.Context) error {
 		// Удалить workout
-		if err := s.workoutRepo.DeleteWorkout(txCtx, id, userID); err != nil {
+		if err = s.workoutRepo.DeleteWorkout(txCtx, id, userID); err != nil {
 			return fmt.Errorf("Delete: %w", err)
 		}
 
@@ -260,7 +260,7 @@ func (s *workoutService) Update(ctx context.Context, userID, id int64, req dto.U
 			workout.AnomalyReason = nil
 		}
 
-		err := s.workoutRepo.Update(txCtx, workout)
+		err = s.workoutRepo.Update(txCtx, workout)
 		if err != nil {
 			return fmt.Errorf("Update: %w", err)
 		}
