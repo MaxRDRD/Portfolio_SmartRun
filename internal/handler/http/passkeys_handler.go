@@ -192,7 +192,6 @@ func (h *PasskeyHandler) DeletePasskey(w http.ResponseWriter, r *http.Request) {
 	// Удаляем ключ
 	err = h.service.DeletePasskey(ctx, id, userID)
 	if err != nil {
-		log.Warn("passkey/DeletePasskey: delete error")
 		response.SendError(w, r, err)
 		return
 	}

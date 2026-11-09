@@ -52,23 +52,41 @@ func NewServer(userHandler *myhttp.UserHandler,
 	metricsHandler *myhttp.MetricHandler,
 	dailyMetricsHandler *myhttp.DailyMetricHandler,
 	passkeyHandler *myhttp.PasskeyHandler,
+	jwtSecret string,
 	ctx context.Context) http.Handler {
 	log := logger.FromContext(ctx)
 	r := chi.NewRouter()
 
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
-	r.Use(middleware.Logger)
+	r.Use(appmiddleware.LogMiddleware(log))
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(60 * time.Second))
 	r.Use(appmiddleware.BodyLimit(1 << 20))
 
-	secret := os.Getenv("JWT_SECRET")
-	auth := authmiddleware.NewAuthMiddleware(secret)
+	auth := authmiddleware.NewAuthMiddleware(jwtSecret)
 
 	// Serve existing frontend static files from ui/static.
 	staticFS := http.FileServer(http.Dir("ui/static"))
 	r.Handle("/static/*", http.StripPrefix("/static/", staticFS))
+
+	// Serve modern React frontend build if present under /app/
+	if _, err := os.Stat("frontend/dist"); err == nil {
+		appFS := http.FileServer(http.Dir("frontend/dist"))
+		r.Handle("/app/*", http.StripPrefix("/app/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			cleanPath := strings.TrimPrefix(r.URL.Path, "/")
+			if cleanPath != "" {
+				if _, err := os.Stat("frontend/dist/" + cleanPath); err == nil {
+					appFS.ServeHTTP(w, r)
+					return
+				}
+			}
+			http.ServeFile(w, r, "frontend/dist/index.html")
+		})))
+		r.Get("/app", func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, "/app/", http.StatusFound)
+		})
+	}
 
 	// Basic frontend routes.
 	r.Get("/", serveFrontendIndex)

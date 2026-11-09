@@ -1,7 +1,6 @@
 package postgres
 
 import (
-	"SmartRun/internal/logger"
 	"SmartRun/internal/model"
 	"SmartRun/internal/repository"
 	"SmartRun/pkg/apperrors"
@@ -32,7 +31,6 @@ func (r *DailyMetricRepo) getDB(ctx context.Context) repository.DB {
 }
 
 func (r *DailyMetricRepo) Create(ctx context.Context, dailyMetric model.DailyMetric) (*model.DailyMetric, error) {
-	log := logger.FromContext(ctx)
 	sql := `
 	INSERT INTO daily_metrics (user_id, date, steps, ctl, atl, tsb, fatigue_score, readiness_score,
 	body_battery_avg, total_calories, sleep_score, sleep_hours, stress_avg, recommendation, streak_days, monotony, strain, updated_at)
@@ -63,18 +61,15 @@ func (r *DailyMetricRepo) Create(ctx context.Context, dailyMetric model.DailyMet
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			log.Warn("daily metrics repo: create duplicate", "user_id", dailyMetric.UserID, "date", dailyMetric.Date.Format("2006-01-02"), "constraint", pgErr.ConstraintName)
 			return nil, apperrors.ErrDailyMetricAlreadyExists
 		}
-		log.Error("daily metrics repo: create failed", "user_id", dailyMetric.UserID, "date", dailyMetric.Date.Format("2006-01-02"), "error", err)
-		return nil, fmt.Errorf("Create: %w", err)
+		return nil, fmt.Errorf("dailyMetricRepo.Create: %w", err)
 	}
 
 	return &dailyMetric, nil
 }
 
 func (r *DailyMetricRepo) Update(ctx context.Context, dailyMetric model.DailyMetric) (*model.DailyMetric, error) {
-	log := logger.FromContext(ctx)
 	sql := `
 	UPDATE daily_metrics
 	SET date = $1, steps = $2, ctl = $3, atl = $4, tsb = $5, fatigue_score = $6,
@@ -105,34 +100,28 @@ func (r *DailyMetricRepo) Update(ctx context.Context, dailyMetric model.DailyMet
 		dailyMetric.UserID,
 	)
 	if err != nil {
-		log.Error("daily metrics repo: update failed", "id", dailyMetric.ID, "error", err)
-		return nil, fmt.Errorf("Update: %w", err)
+		return nil, fmt.Errorf("dailyMetricRepo.Update: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
-		log.Warn("daily metrics repo: update no rows affected", "id", dailyMetric.ID)
 		return nil, apperrors.ErrDailyMetricNotFound
 	}
 	return &dailyMetric, nil
 }
 
 func (r *DailyMetricRepo) Delete(ctx context.Context, id, userID int64) error {
-	log := logger.FromContext(ctx)
 	sql := `DELETE FROM daily_metrics WHERE id = $1 and user_id = $2`
 	db := r.getDB(ctx)
 	tag, err := db.Exec(ctx, sql, id, userID)
 	if err != nil {
-		log.Error("daily metrics repo: delete failed", "id", id, "error", err)
-		return apperrors.ErrDailyMetricNotFound
+		return fmt.Errorf("dailyMetricRepo.Delete: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
-		log.Warn("daily metrics repo: delete no rows", "id", id)
 		return apperrors.ErrDailyMetricNotFound
 	}
 	return nil
 }
 
 func (r *DailyMetricRepo) GetByID(ctx context.Context, id, userID int64) (*model.DailyMetric, error) {
-	log := logger.FromContext(ctx)
 	sql := `
 	SELECT id, user_id, date, steps, ctl, atl, tsb, fatigue_score, readiness_score,
 	body_battery_avg, total_calories, sleep_score, sleep_hours, stress_avg, recommendation, updated_at, streak_days, monotony, strain
@@ -163,14 +152,12 @@ func (r *DailyMetricRepo) GetByID(ctx context.Context, id, userID int64) (*model
 		&dailyMetric.Strain,
 	)
 	if err != nil {
-		log.Error("daily metrics repo: get-by-id failed", "id", id, "error", err)
 		return nil, apperrors.ErrDailyMetricNotFound
 	}
 	return &dailyMetric, nil
 }
 
 func (r *DailyMetricRepo) GetAllByUserID(ctx context.Context, userId int64) ([]model.DailyMetric, error) {
-	log := logger.FromContext(ctx)
 	sql := `
 	SELECT id, user_id, date, steps, ctl, atl, tsb, fatigue_score, readiness_score,
 	body_battery_avg, total_calories, sleep_score, sleep_hours, stress_avg, recommendation, updated_at, streak_days, monotony, strain
@@ -182,7 +169,6 @@ func (r *DailyMetricRepo) GetAllByUserID(ctx context.Context, userId int64) ([]m
 	var dailyMetrics []model.DailyMetric
 	rows, err := db.Query(ctx, sql, userId)
 	if err != nil {
-		log.Error("daily metrics repo: get-all query failed", "user_id", userId, "error", err)
 		return nil, apperrors.ErrDailyMetricNotFound
 	}
 	defer rows.Close()
@@ -210,7 +196,6 @@ func (r *DailyMetricRepo) GetAllByUserID(ctx context.Context, userId int64) ([]m
 			&dailyMetric.Strain,
 		)
 		if err != nil {
-			log.Error("daily metrics repo: get-all scan failed", "user_id", userId, "error", err)
 			return nil, apperrors.ErrDailyMetricNotFound
 		}
 		dailyMetrics = append(dailyMetrics, dailyMetric)
@@ -220,7 +205,6 @@ func (r *DailyMetricRepo) GetAllByUserID(ctx context.Context, userId int64) ([]m
 
 // GetByUserIDAndDate получает daily metric по пользователю и дате
 func (r *DailyMetricRepo) GetByUserIDAndDate(ctx context.Context, userID int64, date time.Time) (*model.DailyMetric, error) {
-	log := logger.FromContext(ctx)
 	sql := `
 	SELECT id, user_id, date, steps, ctl, atl, tsb, fatigue_score, readiness_score,
 	body_battery_avg, total_calories, sleep_score, sleep_hours, stress_avg, recommendation, updated_at, streak_days, monotony, strain
@@ -259,7 +243,6 @@ func (r *DailyMetricRepo) GetByUserIDAndDate(ctx context.Context, userID int64, 
 		}
 		// Любая другая SQL ошибка должна пробрасываться наверх,
 		// иначе транзакция останется aborted и упадет следующей командой с SQLSTATE 25P02.
-		log.Error("daily metrics repo: get-by-date failed", "user_id", userID, "date", date.Format("2006-01-02"), "error", err)
 		return nil, fmt.Errorf("GetByUserIDAndDate: %w", err)
 	}
 
@@ -268,7 +251,6 @@ func (r *DailyMetricRepo) GetByUserIDAndDate(ctx context.Context, userID int64, 
 
 // UpdateOrCreate обновляет existing daily metric или создает новый (атомарное upsert)
 func (r *DailyMetricRepo) UpdateOrCreate(ctx context.Context, dailyMetric *model.DailyMetric) error {
-	log := logger.FromContext(ctx)
 	sql := `
 	INSERT INTO daily_metrics (user_id, date, steps, ctl, atl, tsb, fatigue_score, readiness_score,
     body_battery_avg, total_calories, sleep_score, sleep_hours, stress_avg, recommendation, streak_days, monotony, strain, updated_at)
@@ -317,11 +299,9 @@ RETURNING id;
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			log.Warn("daily metrics repo: create duplicate", "user_id", dailyMetric.UserID, "date", dailyMetric.Date.Format("2006-01-02"), "constraint", pgErr.ConstraintName)
 			return apperrors.ErrDailyMetricAlreadyExists
 		}
-		log.Error("daily metrics repo: create failed", "user_id", dailyMetric.UserID, "date", dailyMetric.Date.Format("2006-01-02"), "error", err)
-		return fmt.Errorf("Create: %w", err)
+		return fmt.Errorf("dailyMetricRepo.UpdateOrCreate: %w", err)
 	}
 
 	return nil

@@ -5,9 +5,7 @@ import (
 	"SmartRun/internal/logger"
 	"SmartRun/internal/model"
 	"SmartRun/internal/repository"
-	"SmartRun/pkg/apperrors"
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
@@ -39,7 +37,6 @@ func (s *metricService) CreateMetrics(ctx context.Context, metrics model.Metrics
 	log := logger.FromContext(ctx).With("user_id", metrics.UserID)
 	createdMetrics, err := s.repo.CreateMetrics(ctx, metrics)
 	if err != nil {
-		log.Error("metrics service: create failed", "error", err)
 		return nil, fmt.Errorf("create metrics: %w", err)
 	}
 	log.Info("metrics service: create success")
@@ -77,14 +74,8 @@ func normalizeMetricsFilter(filter dto.MetricsFilter) dto.MetricsFilter {
 
 func (s *metricService) GetMetrics(ctx context.Context, filter dto.MetricsFilter) (*model.Metrics, error) {
 	filter = normalizeMetricsFilter(filter)
-	log := logger.FromContext(ctx).With("user_id", filter.UserID)
 	metric, err := s.repo.GetMetricsByID(ctx, filter)
 	if err != nil {
-		if errors.Is(err, apperrors.ErrMetricNotFound) {
-			log.Warn("metrics service: get not found")
-		} else {
-			log.Error("metrics service: get failed", "error", err)
-		}
 		return nil, fmt.Errorf("GetMetrics: %w", err)
 	}
 	return metric, nil
@@ -92,14 +83,8 @@ func (s *metricService) GetMetrics(ctx context.Context, filter dto.MetricsFilter
 
 func (s *metricService) GetAllMetrics(ctx context.Context, filter dto.MetricsFilter) (*model.Metrics, error) {
 	filter = normalizeMetricsFilter(filter)
-	log := logger.FromContext(ctx).With("user_id", filter.UserID)
 	metric, err := s.repo.GetAllMetricsByID(ctx, filter)
 	if err != nil {
-		if errors.Is(err, apperrors.ErrMetricNotFound) {
-			log.Warn("metrics service: get-all not found")
-		} else {
-			log.Error("metrics service: get-all failed", "error", err)
-		}
 		return nil, fmt.Errorf("GetAllMetrics: %w", err)
 	}
 	return metric, nil
@@ -109,7 +94,6 @@ func (s *metricService) UpdateMetrics(ctx context.Context, metrics model.Metrics
 	log := logger.FromContext(ctx).With("user_id", metrics.UserID, "metrics_id", metrics.ID)
 	updatedMetrics, err := s.repo.UpdateMetrics(ctx, metrics)
 	if err != nil {
-		log.Error("metrics service: update failed", "error", err)
 		return nil, fmt.Errorf("update metrics: %w", err)
 	}
 	log.Info("metrics service: update success")
@@ -120,7 +104,6 @@ func (s *metricService) DeleteMetrics(ctx context.Context, id int64, userID int6
 	log := logger.FromContext(ctx).With("user_id", userID, "metrics_id", id)
 	err := s.repo.DeleteMetrics(ctx, id, userID)
 	if err != nil {
-		log.Error("metrics service: delete failed", "error", err)
 		return fmt.Errorf("delete metrics: %w", err)
 	}
 	log.Info("metrics service: delete success")

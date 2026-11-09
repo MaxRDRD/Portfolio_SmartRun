@@ -3,7 +3,6 @@ package postgres
 import (
 	"SmartRun/internal/cache"
 	"SmartRun/internal/dto"
-	"SmartRun/internal/logger"
 	"SmartRun/internal/model"
 	"SmartRun/internal/repository"
 	"SmartRun/pkg/apperrors"
@@ -44,7 +43,6 @@ func (r *metricsRepository) invalidateStoredCache(ctx context.Context, userID in
 }
 
 func (r *metricsRepository) CreateMetrics(ctx context.Context, metrics model.Metrics) (*model.Metrics, error) {
-	log := logger.FromContext(ctx)
 	sqlQuery := `
 	INSERT INTO metrics (user_id, total_workouts, total_distance, total_duration, avg_pace, from_date, to_date, total_calories)
 	VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -52,7 +50,6 @@ func (r *metricsRepository) CreateMetrics(ctx context.Context, metrics model.Met
 	`
 	err := r.db.QueryRow(ctx, sqlQuery, metrics.UserID, metrics.TotalWorkouts, metrics.TotalDistance, metrics.TotalDuration, metrics.AvgPace, metrics.From, metrics.To, metrics.TotalCalories).Scan(&metrics.ID)
 	if err != nil {
-		log.Error("metrics repo: create failed", "user_id", metrics.UserID, "error", err)
 		return nil, fmt.Errorf("create metrics: %w", err)
 	}
 	r.invalidateStoredCache(ctx, metrics.UserID)
@@ -61,7 +58,6 @@ func (r *metricsRepository) CreateMetrics(ctx context.Context, metrics model.Met
 }
 
 func (r *metricsRepository) GetMetricsByID(ctx context.Context, filter dto.MetricsFilter) (*model.Metrics, error) {
-	log := logger.FromContext(ctx)
 	sqlQuery := `
 	SELECT
     COALESCE(COUNT(*), 0) as total_workouts,
@@ -85,7 +81,6 @@ func (r *metricsRepository) GetMetricsByID(ctx context.Context, filter dto.Metri
 		&totalCalories,
 	)
 	if err != nil {
-		log.Error("metrics repo: query aggregated failed", "user_id", filter.UserID, "error", err)
 		return nil, fmt.Errorf("query metrics: %w", err)
 	}
 
@@ -120,7 +115,6 @@ func (r *metricsRepository) GetMetricsByID(ctx context.Context, filter dto.Metri
 }
 
 func (r *metricsRepository) UpdateMetrics(ctx context.Context, metrics model.Metrics) (*model.Metrics, error) {
-	log := logger.FromContext(ctx)
 	sqlQuery := `
 	UPDATE metrics
 	SET total_workouts = $1, total_distance = $2, total_duration = $3,
@@ -141,11 +135,9 @@ func (r *metricsRepository) UpdateMetrics(ctx context.Context, metrics model.Met
 		metrics.ID,
 		metrics.UserID)
 	if err != nil {
-		log.Error("metrics repo: update failed", "id", metrics.ID, "user_id", metrics.UserID, "error", err)
 		return nil, fmt.Errorf("update metrics: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
-		log.Warn("metrics repo: update no rows affected", "id", metrics.ID, "user_id", metrics.UserID)
 		return nil, fmt.Errorf("update metrics: no rows affected")
 	}
 	r.invalidateStoredCache(ctx, metrics.UserID)
@@ -153,17 +145,14 @@ func (r *metricsRepository) UpdateMetrics(ctx context.Context, metrics model.Met
 }
 
 func (r *metricsRepository) DeleteMetrics(ctx context.Context, id int64, userID int64) error {
-	log := logger.FromContext(ctx)
 	sqlQuery := `
 	DELETE FROM metrics WHERE id = $1 AND user_id = $2
 	`
 	tag, err := r.db.Exec(ctx, sqlQuery, id, userID)
 	if err != nil {
-		log.Error("metrics repo: delete failed", "id", id, "user_id", userID, "error", err)
 		return fmt.Errorf("delete metrics: %w", err)
 	}
 	if tag.RowsAffected() == 0 {
-		log.Warn("metrics repo: delete no rows affected", "id", id, "user_id", userID)
 		return fmt.Errorf("delete metrics: no rows affected")
 	}
 	r.invalidateStoredCache(ctx, userID)
@@ -171,7 +160,6 @@ func (r *metricsRepository) DeleteMetrics(ctx context.Context, id int64, userID 
 }
 
 func (r *metricsRepository) GetAllMetricsByID(ctx context.Context, filter dto.MetricsFilter) (*model.Metrics, error) {
-	log := logger.FromContext(ctx)
 	cacheKey := r.cachedStoredKey(filter.UserID)
 	if cached, ok := r.cacheGet(ctx, cacheKey); ok {
 		var m model.Metrics
@@ -211,10 +199,8 @@ func (r *metricsRepository) GetAllMetricsByID(ctx context.Context, filter dto.Me
 		)
 		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
-				log.Warn("metrics repo: stored metrics not found", "user_id", filter.UserID)
 				return nil, apperrors.ErrMetricNotFound
 			}
-			log.Error("metrics repo: query stored failed", "user_id", filter.UserID, "error", err)
 			return nil, fmt.Errorf("query metrics: %w", err)
 		}
 		metrics.From = fromDate.Format("2006-01-02")

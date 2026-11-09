@@ -27,3 +27,26 @@ type Publisher interface {
 	// PublishAICoachEvent публикует событие для генерации советов ИИ-тренера
 	PublishAICoachEvent(ctx context.Context, event MetricsRecalculationEvent) error
 }
+
+// NoopPublisher заглушка для запуска без брокера RabbitMQ
+type NoopPublisher struct{}
+
+func NewNoopPublisher() *NoopPublisher {
+	return &NoopPublisher{}
+}
+
+func (p *NoopPublisher) PublishMetricsRecalculation(ctx context.Context, event MetricsRecalculationEvent) error {
+	return nil
+}
+
+func (p *NoopPublisher) PublishPasswordReset(ctx context.Context, event PasswordResetEvent) error {
+	return nil
+}
+
+func (p *NoopPublisher) PublishAICoachEvent(ctx context.Context, event MetricsRecalculationEvent) error {
+	return nil
+}
+
+func (p *NoopPublisher) Close() error {
+	return nil
+}

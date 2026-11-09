@@ -98,7 +98,6 @@ func (s *passkeyService) BeginRegistration(ctx context.Context, userID int64) (*
 		webauthnpkg.WithAuthenticatorSelection(authSelection),
 	)
 	if err != nil {
-		log.Error("passkey service: failed to begin registration", "user_id", userID, "error", err)
 		return nil, fmt.Errorf("webauthn.BeginRegistration: %w", err)
 	}
 
@@ -178,7 +177,6 @@ func (s *passkeyService) FinishRegistration(ctx context.Context, userID int64, b
 	}
 
 	if err := s.passkeyRepo.Create(ctx, newPasskey); err != nil {
-		log.Error("passkey service: failed to save passkey in db", "user_id", userID, "error", err)
 		return nil, fmt.Errorf("save passkey: %w", err)
 	}
 
@@ -212,14 +210,12 @@ func (s *passkeyService) BeginLogin(ctx context.Context, email string) (*protoco
 		webAuthnUser := adapter.NewWebAuthnUser(user, passkeys)
 		assertion, sessionData, err = s.webAuthn.BeginLogin(webAuthnUser)
 		if err != nil {
-			log.Error("passkey service: failed to begin login", "email", email, "error", err)
 			return nil, "", fmt.Errorf("webauthn.BeginLogin: %w", err)
 		}
 	} else {
 		// Discoverable passkey login (без ввода email)
 		assertion, sessionData, err = s.webAuthn.BeginDiscoverableLogin()
 		if err != nil {
-			log.Error("passkey service: failed to begin discoverable login", "error", err)
 			return nil, "", fmt.Errorf("webauthn.BeginDiscoverableLogin: %w", err)
 		}
 	}

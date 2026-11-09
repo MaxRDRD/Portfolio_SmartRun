@@ -51,7 +51,6 @@ func (s *dailyMetricService) CreateDailyMetric(ctx context.Context, dailyMetric 
 	log := logger.FromContext(ctx)
 	createdMetric, err := s.dailyMetricRepo.Create(ctx, dailyMetric)
 	if err != nil {
-		log.Error("daily metrics service: create failed", "user_id", dailyMetric.UserID, "date", dailyMetric.Date.Format("2006-01-02"), "error", err)
 		return nil, fmt.Errorf("CreateDailyMetric: %w", err)
 	}
 	log.Info("daily metrics service: create success", "user_id", dailyMetric.UserID, "id", createdMetric.ID)
@@ -72,7 +71,6 @@ func (s *dailyMetricService) UpdateDailyMetric(ctx context.Context, req dto.Upda
 	log := logger.FromContext(ctx)
 	existing, err := s.dailyMetricRepo.GetByID(ctx, req.ID, req.UserID)
 	if err != nil {
-		log.Error("daily metrics service: get existing failed", "id", req.ID, "error", err)
 		return nil, fmt.Errorf("UpdateDailyMetric: %w", err)
 	}
 
@@ -98,7 +96,6 @@ func (s *dailyMetricService) UpdateDailyMetric(ctx context.Context, req dto.Upda
 
 	workouts, err := s.workoutRepo.GetAllByUserID(ctx, filter)
 	if err != nil {
-		log.Error("daily metrics service: workout fetch failed", "user_id", userID, "error", err)
 		return nil, fmt.Errorf("UpdateDailyMetric: %w", err)
 	}
 
@@ -125,7 +122,6 @@ func (s *dailyMetricService) UpdateDailyMetric(ctx context.Context, req dto.Upda
 
 	result, err := s.dailyMetricRepo.Update(ctx, *updated)
 	if err != nil {
-		log.Error("daily metrics service: update failed", "id", req.ID, "error", err)
 		return nil, fmt.Errorf("UpdateDailyMetric: %w", err)
 	}
 	log.Info("daily metrics service: update success", "id", req.ID, "user_id", userID)
@@ -136,7 +132,6 @@ func (s *dailyMetricService) DeleteDailyMetric(ctx context.Context, id, userID i
 	log := logger.FromContext(ctx)
 	err := s.dailyMetricRepo.Delete(ctx, id, userID)
 	if err != nil {
-		log.Error("daily metrics service: delete failed", "id", id, "error", err)
 		return fmt.Errorf("DeleteDailyMetric: %w", err)
 	}
 	log.Info("daily metrics service: delete success", "id", id)
@@ -144,20 +139,16 @@ func (s *dailyMetricService) DeleteDailyMetric(ctx context.Context, id, userID i
 }
 
 func (s *dailyMetricService) GetDailyMetricByID(ctx context.Context, id, userID int64) (*model.DailyMetric, error) {
-	log := logger.FromContext(ctx)
 	dailyMetric, err := s.dailyMetricRepo.GetByID(ctx, id, userID)
 	if err != nil {
-		log.Error("daily metrics service: get-by-id failed", "id", id, "error", err)
 		return nil, fmt.Errorf("GetDailyMetricByID: %w", err)
 	}
 	return dailyMetric, nil
 }
 
 func (s *dailyMetricService) GetByUserIDAndDate(ctx context.Context, userID int64, date time.Time) (*model.DailyMetric, error) {
-	log := logger.FromContext(ctx)
 	dailyMetric, err := s.dailyMetricRepo.GetByUserIDAndDate(ctx, userID, date)
 	if err != nil {
-		log.Error("daily metrics service: get-by-user-date failed", "user_id", userID, "date", date, "error", err)
 		return nil, fmt.Errorf("GetByUserIDAndDate: %w", err)
 	}
 	return dailyMetric, nil
@@ -167,7 +158,6 @@ func (s *dailyMetricService) GetAllDailyMetrics(ctx context.Context, userId int6
 	log := logger.FromContext(ctx)
 	dailyMetrics, err := s.dailyMetricRepo.GetAllByUserID(ctx, userId)
 	if err != nil {
-		log.Error("daily metrics service: get-all failed", "user_id", userId, "error", err)
 		return nil, fmt.Errorf("GetAllDailyMetrics: %w", err)
 	}
 	log.Info("daily metrics service: get-all success", "user_id", userId, "count", len(dailyMetrics))

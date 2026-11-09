@@ -79,7 +79,6 @@ func (s *authService) Register(ctx context.Context, req dto.RegisterRequest) (*d
 	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
 	req.Password = strings.TrimSpace(req.Password)
 	if err := s.validate.Struct(req); err != nil {
-		log.Warn("auth service: register validation failed", "email", req.Email, "error", err)
 		return nil, fmt.Errorf("Register: %w", err)
 	}
 
@@ -177,7 +176,6 @@ func (s *authService) Register(ctx context.Context, req dto.RegisterRequest) (*d
 	})
 
 	if err != nil {
-		log.Error("auth service: register failed", "email", req.Email, "error", err)
 		return nil, fmt.Errorf("Register: %w", err)
 	}
 	if result != nil && result.User != nil {
@@ -191,7 +189,6 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (*dto.Aut
 	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
 	req.Password = strings.TrimSpace(req.Password)
 	if err := s.validate.Struct(req); err != nil {
-		log.Warn("auth service: login validation failed", "email", req.Email, "password_len", len(req.Password), "error", err)
 		return nil, fmt.Errorf("Login: %w", err)
 	}
 
@@ -261,7 +258,6 @@ func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (*dto.Aut
 	})
 
 	if err != nil {
-		log.Error("auth service: login failed", "email", req.Email, "error", err)
 		return nil, fmt.Errorf("Login: %w", err)
 	}
 	if result != nil && result.User != nil {

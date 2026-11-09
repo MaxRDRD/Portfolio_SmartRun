@@ -5,12 +5,12 @@ import (
 	db "SmartRun/internal/DB"
 	"SmartRun/internal/adapter/importer/fit"
 	"SmartRun/internal/adapter/llm"
+	"SmartRun/internal/broker"
 	"SmartRun/internal/broker/rabbitmq"
 	"SmartRun/internal/cache"
 	"SmartRun/internal/config"
 	myhttp "SmartRun/internal/handler/http"
 	"SmartRun/internal/logger"
-	"SmartRun/internal/middleware"
 	"SmartRun/internal/repository/postgres"
 	workoutpostgres "SmartRun/internal/repository/postgres/workout"
 	"SmartRun/internal/usecase/service"
@@ -31,18 +31,25 @@ import (
 )
 
 func main() {
-	log := logger.NewLogger()
+	cfg, err := config.Load()
+	if err != nil {
+		slog.Error("failed to load config", "error", err)
+		os.Exit(1)
+	}
+	log, logCloser := logger.NewLogger(cfg.Logger)
+	defer func() {
+		_ = logCloser()
+	}()
 	ctx := logger.WithContext(context.Background(), log) // создаём базовый контекст с логгером
-	err := run(ctx, log)
+	err = run(ctx, log, cfg)
 	if err != nil {
 		log.Error("failed to start app", "error", err)
 		os.Exit(1)
 	}
 }
 
-func run(ctx context.Context, log *slog.Logger) error {
-	connString := os.Getenv("CONN_STRING")
-	pool, err := db.NewPool(ctx, connString)
+func run(ctx context.Context, log *slog.Logger, cfg *config.Config) error {
+	pool, err := db.NewPool(ctx, cfg.Postgres.ConnString())
 	if err != nil {
 		log.Error("failed to create database pool", "error", err,
 			"stack", string(debug.Stack()))
@@ -51,8 +58,8 @@ func run(ctx context.Context, log *slog.Logger) error {
 	defer pool.Close()
 	validator := validator.New()
 	cacheStore := cache.NewNoopCache()
-	if redisURL := os.Getenv("REDIS_URL"); redisURL != "" {
-		if redisCache, cacheErr := cache.NewRedisCache(redisURL); cacheErr != nil {
+	if cfg.Redis.URL != "" {
+		if redisCache, cacheErr := cache.NewRedisCache(cfg.Redis.URL); cacheErr != nil {
 			log.Warn("redis cache unavailable, fallback to noop cache", "error", cacheErr)
 		} else {
 			cacheStore = redisCache
@@ -68,38 +75,29 @@ func run(ctx context.Context, log *slog.Logger) error {
 	userRepo := postgres.NewUserRepository(pool, cacheStore)
 	sessionRepo := postgres.NewSessionRepository(pool)
 	totpRepo := postgres.NewTOTPRepository(pool)
-	cfg := config.AuthConfig{
-		AccessTokenTTL:  15 * time.Minute,
-		RefreshTokenTTL: 30 * 24 * time.Hour,
-		JWTSecret:       os.Getenv("JWT_SECRET"),
-		PublicURL:       os.Getenv("APP_PUBLIC_URL"),
-	}
-	if cfg.PublicURL == "" {
-		cfg.PublicURL = "http://localhost:3000"
-	}
+	authCfg := cfg.Auth
 	txManager := postgres.NewTxManager(pool)
 	passwResetRepo := postgres.NewPasswordResetRepository(pool)
-	emailService, err := service.NewEmailService(cfg.Email)
+	emailService, err := service.NewEmailService(authCfg.Email)
 	if err != nil {
 		log.Error("failed to create email service", "error", err,
 			"stack", string(debug.Stack()))
 		return err
 	}
 
-	rabbitURL := os.Getenv("RABBITMQ_URL")
-	if rabbitURL == "" {
-		rabbitURL = "amqp://smartrun:smartrun@localhost:5672/"
+	rabbitURL := cfg.RabbitMQ.URL
+	var publisher broker.Publisher = broker.NewNoopPublisher()
+	if rabbitPublisher, rabbitErr := rabbitmq.NewPublisher(rabbitURL); rabbitErr != nil {
+		log.Warn("rabbitmq publisher unavailable, fallback to noop publisher (async events disabled)", "error", rabbitErr)
+	} else {
+		publisher = rabbitPublisher
+		defer rabbitPublisher.Close()
+		log.Info("rabbitmq publisher initialized")
 	}
-	publisher, err := rabbitmq.NewPublisher(rabbitURL)
-	if err != nil {
-		log.Error("failed to initialize rabbitmq publisher", "error", err, "stack", string(debug.Stack()))
-		return err
-	}
-	defer publisher.Close()
 
 	passkeyRepo := postgres.NewPasskeyRepository(pool)
 
-	userService := service.NewUserService(userRepo, sessionRepo, totpRepo, passwResetRepo, emailService, cfg, txManager, validator, publisher)
+	userService := service.NewUserService(userRepo, sessionRepo, totpRepo, passwResetRepo, emailService, authCfg, txManager, validator, publisher)
 	userHandler := myhttp.NewUserHandler(userService)
 
 	workoutRepo := workoutpostgres.NewWorkoutRepository(pool)
@@ -112,53 +110,44 @@ func run(ctx context.Context, log *slog.Logger) error {
 	dailyMetricsHandler := myhttp.NewDailyMetricHandler(dailyMetricsService)
 
 	// Конфигурация FIDO2 / WebAuthn (Passkeys)
-	rpID := os.Getenv("WEBAUTHN_RP_ID")
-	if rpID == "" {
-		rpID = "localhost"
-	}
-	rpOrigin := os.Getenv("WEBAUTHN_RP_ORIGIN")
-	if rpOrigin == "" {
-		rpOrigin = cfg.PublicURL // По умолчанию http://localhost:3000
-	}
 	webAuthn, err := webauthn.New(&webauthn.Config{
-		RPDisplayName: "SmartRun",
-		RPID:          rpID,
-		RPOrigins:     []string{rpOrigin, "http://localhost:8080"}, // Разрешаем фронтенд и прямой порт бэкенда
+		RPDisplayName: cfg.WebAuthn.RPDisplayName,
+		RPID:          cfg.WebAuthn.RPID,
+		RPOrigins:     cfg.WebAuthn.RPOrigins,
 	})
 	if err != nil {
 		log.Error("failed to initialize webauthn", "error", err, "stack", string(debug.Stack()))
 		return err
 	}
 
-	passkeyService := service.NewPasskeyService(userRepo, passkeyRepo, sessionRepo, totpRepo, txManager, cacheStore, webAuthn, cfg)
+	passkeyService := service.NewPasskeyService(userRepo, passkeyRepo, sessionRepo, totpRepo, txManager, cacheStore, webAuthn, authCfg)
 	passkeyHandler := myhttp.NewPasskeyHandler(passkeyService)
 
-	workerPool, err := worker.NewWorkerPool(rabbitURL)
-	if err != nil {
-		log.Error("failed to initialize worker pool", "error", err, "stack", string(debug.Stack()))
-		return err
-	}
-	defer workerPool.Close()
-
-	metricsWorker := worker.NewMetricsWorker(workoutService)
-	if err = workerPool.StartConsumer(rabbitmq.MetricsQueue, metricsWorker); err != nil {
-		log.Error("failed to start metrics worker", "error", err)
-		return err
-	}
-
-	emailWorker := worker.NewEmailWorker(emailService)
-	if err = workerPool.StartConsumer(rabbitmq.PasswordResetQueue, emailWorker); err != nil {
-		log.Error("failed to start email worker", "error", err)
-		return err
-	}
-
-	aiCoach, err := llm.NewGeminiCoach(context.Background())
-	if err != nil {
-		log.Warn("failed to initialize AI coach, advice generation will be disabled", "error", err)
+	if workerPool, poolErr := worker.NewWorkerPool(rabbitURL); poolErr != nil {
+		log.Warn("rabbitmq worker pool unavailable, background workers disabled", "error", poolErr)
 	} else {
-		aiCoachWorker := worker.NewAICoachWorker(aiCoach, dailyMetricsService, workoutService)
-		if err = workerPool.StartConsumer(rabbitmq.AICoachQueue, aiCoachWorker); err != nil {
-			log.Error("failed to start ai coach worker", "error", err)
+		defer workerPool.Close()
+
+		metricsWorker := worker.NewMetricsWorker(workoutService)
+		if err = workerPool.StartConsumer(rabbitmq.MetricsQueue, metricsWorker); err != nil {
+			log.Error("failed to start metrics worker", "error", err)
+			return err
+		}
+
+		emailWorker := worker.NewEmailWorker(emailService)
+		if err = workerPool.StartConsumer(rabbitmq.PasswordResetQueue, emailWorker); err != nil {
+			log.Error("failed to start email worker", "error", err)
+			return err
+		}
+
+		aiCoach, err := llm.NewGeminiCoach(context.Background())
+		if err != nil {
+			log.Warn("failed to initialize AI coach, advice generation will be disabled", "error", err)
+		} else {
+			aiCoachWorker := worker.NewAICoachWorker(aiCoach, dailyMetricsService, workoutService)
+			if err = workerPool.StartConsumer(rabbitmq.AICoachQueue, aiCoachWorker); err != nil {
+				log.Error("failed to start ai coach worker", "error", err)
+			}
 		}
 	}
 
@@ -204,15 +193,14 @@ func run(ctx context.Context, log *slog.Logger) error {
 		metricsHandler,
 		dailyMetricsHandler,
 		passkeyHandler,
+		cfg.Auth.JWTSecret,
 		ctx)
-	// Оборачиваем в middleware, чтобы в каждом запросе был логгер с request_id и т.д.
-	loggedHandler := middleware.LogMiddleware(log)(handler)
 	httpServer := &http.Server{
-		Addr:              ":8080",
-		Handler:           loggedHandler,
-		ReadTimeout:       15 * time.Second,
-		WriteTimeout:      15 * time.Second,
-		IdleTimeout:       60 * time.Second,
+		Addr:              cfg.HTTP.Address(),
+		Handler:           handler,
+		ReadTimeout:       cfg.HTTP.ReadTimeout,
+		WriteTimeout:      cfg.HTTP.WriteTimeout,
+		IdleTimeout:       cfg.HTTP.IdleTimeout,
 		ReadHeaderTimeout: 3 * time.Second,
 	}
 

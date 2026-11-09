@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -275,11 +276,17 @@ func (h *DailyMetricHandler) GenerateAdvice(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	date, err := parseDateYMD(req.Date)
-	if err != nil {
-		log.Warn("daily-metrics/generate-advice: invalid date", "error", err)
-		response.SendBadRequest(w, "invalid date format, expected YYYY-MM-DD")
-		return
+	var date time.Time
+	if strings.TrimSpace(req.Date) == "" {
+		date = time.Now()
+	} else {
+		var err error
+		date, err = parseDateYMD(req.Date)
+		if err != nil {
+			log.Warn("daily-metrics/generate-advice: invalid date", "error", err)
+			response.SendBadRequest(w, "invalid date format, expected YYYY-MM-DD")
+			return
+		}
 	}
 
 	if err := h.service.TriggerAdviceGeneration(r.Context(), userID, date); err != nil {

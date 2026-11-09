@@ -72,6 +72,8 @@ services:
       RABBITMQ_URL: amqp://smartrun:smartrun@rabbitmq:5672/
       JWT_SECRET: dev-only-super-secret-change-me
       APP_PUBLIC_URL: http://localhost:8080
+    volumes:
+      - ./frontend/dist:/app/frontend/dist:ro
     ports:
       - "8080:8080"
 
